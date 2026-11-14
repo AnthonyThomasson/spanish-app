@@ -1,5 +1,57 @@
-# spanish-app
+# Paso — Spanish flashcards
 
-A Spanish learning app.
+A lightweight Vite + TypeScript flashcard app for vocabulary from a personal copy of Bárbara Bregstein’s *Complete Spanish Step-by-Step*.
 
-This repository currently holds project scaffolding (README, agent notes, and ignore rules). The app stack has not been chosen yet.
+## Run locally
+
+Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires macOS, Swift, and [uv](https://docs.astral.sh/uv/).
+
+1. Install the app dependencies:
+
+   ```sh
+   npm install
+   ```
+
+2. Generate the vocabulary from your own PDF:
+
+   ```sh
+   uv run scripts/extract_vocab.py "/path/to/Complete Spanish Step-by-Step.pdf"
+   ```
+
+   The script uses `pypdf` to extract the embedded table images and macOS Vision to OCR them. It writes `data/vocab.json`; OCR intermediates go in `extraction/`. Both paths are ignored by Git. Use `--refresh-ocr` to run recognition again instead of using the cached OCR output.
+
+3. Start the app:
+
+   ```sh
+   npm run dev
+   ```
+
+   Open the local URL printed by Vite.
+
+## Practice modes
+
+- Select any combination of chapters, Spanish-to-English or English-to-Spanish, and shuffled or book order.
+- **Flip cards:** tap or click a card to reveal its answer.
+- **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
+- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. Three misses reveal the answer.
+
+Spanish prompts use an `es-ES`/`es-MX` voice when available; English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
+
+### Use an Android phone
+
+Microphone access generally requires HTTPS. Start the secure development server:
+
+```sh
+npm run dev:phone
+```
+
+On the same Wi-Fi network, open the **Network** `https://` URL printed by Vite. The development certificate is self-signed, so accept the browser warning and allow microphone access. Chrome is recommended.
+
+## Build
+
+```sh
+npm run build
+npm run preview
+```
+
+The build copies the locally generated vocabulary into `dist/data/vocab.json`. Do not publish that build or commit the generated data: the book’s vocabulary is copyrighted and this public repository contains only the extraction tooling and app code.
