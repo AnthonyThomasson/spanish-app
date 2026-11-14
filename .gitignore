@@ -14,3 +14,10 @@ build/
 .next/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.pyc
+
+# Locally regenerated copyrighted book material
+data/vocab.json
+extraction/
+*.pdf
