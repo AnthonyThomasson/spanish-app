@@ -1,0 +1,3 @@
+# Buttons the run page shows for a ticket worktree of this repo. Each runs its command in a new tab, in the worktree.
+# Add entries here when the app has commands worth launching from Herdr (dev server, tests, and so on).
+buttons: []

@@ -1,0 +1,16 @@
+# System / editor cruft
+.DS_Store
+
+# Secrets — this repository is public
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output (when an app stack is added)
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
