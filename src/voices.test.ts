@@ -36,6 +36,10 @@ describe('speechLanguage', () => {
     expect(speechLanguage('es', voice('es-AR'))).toBe('es-AR');
   });
 
+  it('writes an Android underscore tag as a BCP 47 tag', () => {
+    expect(speechLanguage('es', voice('es_AR'))).toBe('es-AR');
+  });
+
   it('falls back to es-ES and en-US without a voice', () => {
     expect(speechLanguage('es', null)).toBe('es-ES');
     expect(speechLanguage('en', null)).toBe('en-US');

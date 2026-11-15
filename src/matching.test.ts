@@ -219,6 +219,18 @@ describe('sentence matching: long-sentence tolerance', () => {
     expect(isCorrectAnswer('they go to school on foot every day', expected, 'sentence')).toBe(true);
   });
 
+  it('never forgives adding or dropping a negation', () => {
+    expect(isCorrectAnswer('I do want to go to the party tonight', 'I do not want to go to the party tonight', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('I do not want to go to the party tonight', 'I do want to go to the party tonight', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('ellos no quieren ir a la fiesta de hoy', 'ellos quieren ir a la fiesta de hoy', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('I do not want to go to the party today', 'I do not want to go to the party tonight', 'sentence')).toBe(true);
+  });
+
+  it('keeps a slash inside parentheses part of the parenthetical', () => {
+    expect(isCorrectAnswer('you think', 'you (formal / informal) think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('he thinks', 'he thinks / she thinks', 'conjugation')).toBe(true);
+  });
+
   it('never applies to word cards', () => {
     expect(isCorrectAnswer('we eat lunch with my grandmother', six, 'word')).toBe(false);
   });

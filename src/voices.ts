@@ -24,7 +24,7 @@ export function chooseVoice<T extends HasLang>(voices: T[], language: Language):
 
 /** The language tag to speak with: the chosen voice's own, else a safe default. */
 export function speechLanguage(language: Language, voice: HasLang | null): string {
-  return voice?.lang ?? (language === 'es' ? 'es-ES' : 'en-US');
+  return voice?.lang.replace('_', '-') ?? (language === 'es' ? 'es-ES' : 'en-US');
 }
 
 /** The language tag to listen with. Spanish asks for Argentine unless a recognizer has refused it. */

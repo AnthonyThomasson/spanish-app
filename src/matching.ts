@@ -36,6 +36,8 @@ const subjectPronouns: Record<string, string> = {
 };
 
 const TOLERANCE_MIN_WORDS = 6;
+/** Words that flip a sentence's meaning: a slip is never forgiven when it adds or drops one. */
+const NEGATIONS = new Set(['not', 'no', 'never', 'nobody', 'nothing', 'nunca', 'nadie', 'nada', 'jamas', 'tampoco', 'ni']);
 const MAX_PARENTHETICALS = 4;
 
 function expandContractions(text: string): string {
@@ -103,9 +105,11 @@ function withinOneWord(a: string[], b: string[]): boolean {
   return Math.max(endA - start, endB - start) <= 1;
 }
 
+const negations = (words: string[]) => words.filter((word) => NEGATIONS.has(word)).length;
+
 function sentenceAlternatives(expected: string): Reading[] {
   return expected
-    .split(/\s+\/\s+/)
+    .split(/\s+\/\s+(?![^()]*\))/) // a " / " inside parentheses stays part of the parenthetical
     .flatMap(parentheticalVariants)
     .map((variant) => reading(sentenceTokens(variant)))
     .filter((alternative) => alternative.length > 0);
@@ -117,7 +121,9 @@ function isCorrectSentence(spoken: string, expected: string): boolean {
   return sentenceAlternatives(expected).some((alternative) => {
     if (actual.pronoun && alternative.pronoun && actual.pronoun !== alternative.pronoun) return false;
     const exact = actual.rest.length === alternative.rest.length && actual.rest.every((word, index) => word === alternative.rest[index]);
-    return exact || (alternative.length >= TOLERANCE_MIN_WORDS && withinOneWord(actual.rest, alternative.rest));
+    return exact || (alternative.length >= TOLERANCE_MIN_WORDS
+      && negations(actual.rest) === negations(alternative.rest)
+      && withinOneWord(actual.rest, alternative.rest));
   });
 }
 
