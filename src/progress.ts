@@ -1,4 +1,4 @@
-import type { Chapter, Direction, Word } from './types';
+import type { CardDirection, Chapter, Direction, Word } from './types';
 
 /**
  * Per-word, per-direction progress: a streak of correct answers and an optional
@@ -49,18 +49,14 @@ export interface DeckCard {
    * Directions this card may be asked in: the non-hidden directions of the
    * chosen direction(s), or all of them when hidden words are included.
    */
-  directions: Direction[];
+  directions: CardDirection[];
 }
 
 const EMPTY: Readonly<DirectionRecord> = Object.freeze({ streak: 0, hiddenUntil: null });
 
-/**
- * Directions covered by a deck's direction choice. A future "Both" choice (#2)
- * only needs a `'both'` case here returning ['es-en', 'en-es']; deck building
- * already picks from the non-hidden directions of each word.
- */
-export function directionsFor(choice: Direction): Direction[] {
-  return [choice];
+/** Card directions covered by a deck's direction choice; "Both" covers both. */
+export function directionsFor(choice: Direction): CardDirection[] {
+  return choice === 'both' ? ['es-en', 'en-es'] : [choice];
 }
 
 export function clampSettings(input: Partial<ProgressSettings> | null | undefined): ProgressSettings {
@@ -124,7 +120,7 @@ export interface ProgressOptions {
 
 const SEP = '\u001f';
 const chapterPrefix = (chapter: number) => `${chapter}${SEP}`;
-const recordKey = (chapter: number, word: Pick<Word, 'spanish' | 'english'>, direction: Direction) =>
+const recordKey = (chapter: number, word: Pick<Word, 'spanish' | 'english'>, direction: CardDirection) =>
   `${chapterPrefix(chapter)}${word.spanish}${SEP}${word.english}${SEP}${direction}`;
 
 function defaultStorage(): StorageLike | null {
@@ -190,16 +186,16 @@ export function createProgress(options: ProgressOptions = {}) {
     save();
   }
 
-  const current = (chapter: number, word: Word, direction: Direction, now: number = clock()) =>
+  const current = (chapter: number, word: Word, direction: CardDirection, now: number = clock()) =>
     effectiveRecord(records.get(recordKey(chapter, word, direction)), now);
 
   /** Directions of a word that will be asked for this choice. */
-  function askable(chapter: number, word: Word, choice: Direction, includeHidden: boolean, now: number): Direction[] {
+  function askable(chapter: number, word: Word, choice: Direction, includeHidden: boolean, now: number): CardDirection[] {
     const directions = directionsFor(choice);
     return includeHidden ? directions : directions.filter((d) => !isHidden(chapter, word, d, now));
   }
 
-  function isHidden(chapter: number, word: Word, direction: Direction, now: number = clock()): boolean {
+  function isHidden(chapter: number, word: Word, direction: CardDirection, now: number = clock()): boolean {
     return current(chapter, word, direction, now).hiddenUntil !== null;
   }
 
@@ -230,24 +226,24 @@ export function createProgress(options: ProgressOptions = {}) {
       return { ...settings };
     },
 
-    streak: (chapter: number, word: Word, direction: Direction): number => current(chapter, word, direction).streak,
-    hiddenUntil: (chapter: number, word: Word, direction: Direction): number | null =>
+    streak: (chapter: number, word: Word, direction: CardDirection): number => current(chapter, word, direction).streak,
+    hiddenUntil: (chapter: number, word: Word, direction: CardDirection): number | null =>
       current(chapter, word, direction).hiddenUntil,
     isHidden,
 
     /** Speak answers: a correct answer. */
-    recordCorrect(chapter: number, word: Word, direction: Direction): void {
+    recordCorrect(chapter: number, word: Word, direction: CardDirection): void {
       const key = recordKey(chapter, word, direction);
       store(key, applyCorrect(records.get(key), settings, clock()));
     },
 
     /** Speak answers: any miss, including the reveal after 3 misses. Also un-hides. */
-    recordMiss(chapter: number, word: Word, direction: Direction): void {
+    recordMiss(chapter: number, word: Word, direction: CardDirection): void {
       store(recordKey(chapter, word, direction), applyMiss());
     },
 
     /** Flip cards / Auto listen: hide this word in this direction now (never shortening an existing hide). */
-    knowIt(chapter: number, word: Word, direction: Direction): void {
+    knowIt(chapter: number, word: Word, direction: CardDirection): void {
       const key = recordKey(chapter, word, direction);
       store(key, applyKnowIt(records.get(key), settings, clock()));
     },
@@ -259,7 +255,10 @@ export function createProgress(options: ProgressOptions = {}) {
       save();
     },
 
-    /** Words in the chapter hidden in the chosen direction (for "42 words · 12 hidden"). */
+    /**
+     * Words in the chapter left out of a deck (for "42 words · 12 hidden"): hidden
+     * in the chosen direction, or in both directions under "Both".
+     */
     hiddenCount(chapter: Chapter, direction: Direction): number {
       const now = clock();
       return chapter.words.filter((word) =>
@@ -274,8 +273,8 @@ export function createProgress(options: ProgressOptions = {}) {
       buildDeck(chapters, direction, includeHidden).length,
 
     /**
-     * Earliest hide-until among the selection's hidden words in the chosen
-     * direction(s), or null when none are hidden. Used for "All these words are
+     * Earliest date at which any direction of any selected word comes back
+     * (the earliest hide-until among the chosen direction(s)), or null when none are hidden. Used for "All these words are
      * hidden until <date>".
      */
     earliestHiddenUntil(chapters: Chapter[], direction: Direction): number | null {

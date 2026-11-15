@@ -35,6 +35,15 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 - **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
 - **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. Three misses reveal the answer.
 
+### Hiding mastered words
+
+Progress is saved locally (`localStorage`, also in the Android app) per word and per direction, so a word can be hidden Spanish-to-English and still be asked English-to-Spanish. If storage is unavailable the app works without saving.
+
+- In **Speak answers**, each correct answer adds to a word's streak. Reaching **Correct answers to master** (1–10, default 3) hides the word for **Hide mastered words for** (1–12 weeks, default 3). Any miss, including the reveal after three misses, resets the streak; skipping changes nothing.
+- **Flip cards** and **Auto listen** have a **Know it** button that hides the word immediately and moves on.
+- Deck setup shows each chapter's hidden count (for the chosen direction) and counts only the cards that will be asked. **Include hidden words** adds them back for review: a correct answer doesn't extend the hide, and a miss un-hides the word. If every selected word is hidden, Start tells you when they return and offers to include them.
+- **Reset progress** on a chapter clears its streaks and hidden dates in both directions. Changing the settings applies from then on; words already hidden keep their date.
+
 Spanish prompts use an `es-ES`/`es-MX` voice when available; English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
 
 ### Use an Android phone
