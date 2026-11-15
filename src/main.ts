@@ -1,7 +1,13 @@
 import './style.css';
+import { backgroundSession } from './background-session';
 import { isCorrectAnswer } from './matching';
+import { buildNotification } from './notification';
+import { RecognitionFailureTracker, recognitionFailureMessage } from './recognition-errors';
+import { dispatchBackgroundAction } from './session-actions';
+import { shouldAutoPauseWhenHidden } from './session-policy';
 import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Card, Chapter, Direction, Mode, Vocabulary } from './types';
+import { createWait } from './wait';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -111,6 +117,7 @@ const completeView = element<HTMLElement>('complete');
 const form = element<HTMLFormElement>('deck-form');
 const chapterList = element<HTMLDivElement>('chapter-list');
 const speaker = new Speaker();
+const recognitionFailures = new RecognitionFailureTracker();
 
 let chapters: Chapter[] = [];
 let deck: Card[] = [];
@@ -247,6 +254,7 @@ function showCard(): void {
   }
   misses = 0;
   revealed = false;
+  recognitionFailures.reset();
   const card = deck[currentIndex];
   const token = runId;
   element('session-mode').textContent = { flip: 'Flip cards', auto: 'Auto listen', answer: 'Speak answers' }[settings.mode];
@@ -265,8 +273,25 @@ function showCard(): void {
   element('next-button').innerHTML = settings.mode === 'flip' ? 'Next card <span aria-hidden="true">→</span>' : 'Skip card <span aria-hidden="true">→</span>';
   setStatus(settings.mode === 'flip' ? 'Tap the card when you’re ready.' : 'Get ready to listen…');
 
+  syncBackground();
+
   if (settings.mode === 'auto') void runAuto(card, token);
   if (settings.mode === 'answer') void runAnswer(card, token);
+}
+
+/** Keeps the Android foreground-service notification in step with the card on screen. */
+function syncBackground(): void {
+  if (!active || settings.mode === 'flip' || currentIndex >= deck.length) return;
+  const card = deck[currentIndex];
+  backgroundSession.sync(buildNotification({
+    mode: settings.mode,
+    index: currentIndex,
+    total: deck.length,
+    prompt: promptFor(card),
+    answer: answerFor(card),
+    revealed,
+    paused,
+  }));
 }
 
 function revealAnswer(): void {
@@ -280,6 +305,7 @@ function revealAnswer(): void {
   element('card-detail').hidden = !detail;
   element('flip-hint').hidden = true;
   element('flashcard').classList.add('revealed');
+  syncBackground();
 }
 
 function setStatus(message: string, state = ''): void {
@@ -302,23 +328,8 @@ function nextCard(): void {
   showCard();
 }
 
-async function wait(milliseconds: number, token: number): Promise<boolean> {
-  let remaining = milliseconds;
-  let previous = Date.now();
-  return new Promise((resolve) => {
-    const tick = () => {
-      if (token !== runId || !active) {
-        resolve(false);
-        return;
-      }
-      const now = Date.now();
-      if (!paused) remaining -= now - previous;
-      previous = now;
-      if (remaining <= 0) resolve(true);
-      else window.setTimeout(tick, Math.min(100, remaining));
-    };
-    tick();
-  });
+function wait(milliseconds: number, token: number): Promise<boolean> {
+  return createWait({ isCancelled: () => token !== runId || !active, isPaused: () => paused })(milliseconds);
 }
 
 async function runAuto(card: Card, token: number): Promise<void> {
@@ -359,6 +370,7 @@ function startListening(card: Card, token: number): void {
     for (let i = 0; i < event.results.length; i++) {
       for (let j = 0; j < event.results[i].length; j++) transcripts.push(event.results[i][j].transcript);
     }
+    recognitionFailures.reset();
     const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card)));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
     void handleSpokenAnswer(correct, card, token);
@@ -367,10 +379,13 @@ function startListening(card: Card, token: number): void {
     if (event.error === 'aborted') return;
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       handled = true;
-      paused = true;
-      element('pause-button').textContent = 'Resume';
-      setStatus('Microphone access is blocked. Allow it in your browser settings, then press Resume.');
-    } else if (event.error !== 'no-speech') {
+      pauseAfterRecognitionFailure(event.error);
+    } else if (event.error === 'no-speech') {
+      recognitionFailures.reset();
+    } else if (usingNativeSpeech() && recognitionFailures.record()) {
+      handled = true;
+      pauseAfterRecognitionFailure(event.error);
+    } else {
       setStatus('Recognition had trouble. I’ll try listening again.');
     }
   };
@@ -385,6 +400,13 @@ function startListening(card: Card, token: number): void {
   } catch {
     setStatus('Couldn’t start the microphone. Press Pause, then Resume to try again.');
   }
+}
+
+function pauseAfterRecognitionFailure(error: string): void {
+  paused = true;
+  element('pause-button').textContent = 'Resume';
+  setStatus(recognitionFailureMessage(error, document.hidden));
+  syncBackground();
 }
 
 async function handleSpokenAnswer(correct: boolean, card: Card, token: number): Promise<void> {
@@ -434,17 +456,20 @@ function togglePause(): void {
     setStatus('Paused. Press Resume when you’re ready.');
   } else {
     speaker.resume();
+    recognitionFailures.reset();
     if (settings.mode === 'answer' && !revealed) {
       void runAnswer(deck[currentIndex], runId);
     } else {
       setStatus('Resumed.', settings.mode === 'auto' ? 'speaking' : '');
     }
   }
+  syncBackground();
 }
 
 function finishDeck(): void {
   stopCurrent();
   active = false;
+  backgroundSession.stop();
   sessionView.hidden = true;
   completeView.hidden = false;
   element('complete-summary').textContent = `You worked through ${deck.length.toLocaleString()} ${deck.length === 1 ? 'card' : 'cards'}.`;
@@ -454,6 +479,7 @@ function returnToSetup(): void {
   stopCurrent();
   active = false;
   paused = false;
+  backgroundSession.stop();
   sessionView.hidden = true;
   completeView.hidden = true;
   setupView.hidden = false;
@@ -488,7 +514,20 @@ element('end-session').addEventListener('click', returnToSetup);
 element('new-deck').addEventListener('click', returnToSetup);
 element('restart-deck').addEventListener('click', () => startDeck());
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && active && settings.mode !== 'flip' && !paused) togglePause();
+  const hiddenState = { hidden: document.hidden, active, mode: settings.mode, paused, native: usingNativeSpeech() };
+  if (shouldAutoPauseWhenHidden(hiddenState)) togglePause();
 });
+
+// Notification buttons drive the same code paths as the on-screen controls.
+void backgroundSession.onAction((action) => dispatchBackgroundAction(action, {
+  isActive: () => active && settings.mode !== 'flip',
+  isPaused: () => paused,
+  pause: togglePause,
+  resume: togglePause,
+  skip: nextCard,
+  stop: returnToSetup,
+}));
+// Clear any notification left behind by a previous page load.
+backgroundSession.stop();
 
 void loadVocabulary();
