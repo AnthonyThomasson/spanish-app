@@ -74,6 +74,20 @@ The output is `release/spanish-app.apk`. Serve that folder on the local network:
 npm run android:serve
 ```
 
-Then open `http://<mac-wifi-ip>:8787/spanish-app.apk` on the phone, or scan the generated `release/qr.png`. On the Samsung, allow the browser to install unknown apps if Android asks, open the downloaded APK, and install it. The APK is debug-signed for personal installation, not for Play Store distribution.
+Then open `http://<mac-wifi-ip>:8787/spanish-app.apk` on the phone. On the Samsung, allow the browser to install unknown apps if Android asks, open the downloaded APK, and install it. The APK is debug-signed for personal installation, not for Play Store distribution.
+
+### One-step install: the Phone button
+
+`npm run phone` (also the **Phone** button in Herdr, defined in `.herdr/config.yaml`) does the whole flow:
+
+1. runs `npm ci` if `node_modules` is missing;
+2. copies `data/vocab.json` from the main checkout if this worktree lacks it (if neither has one it stops and tells you to run `uv run scripts/extract_vocab.py`);
+3. builds the APK with `npm run android:apk`;
+4. serves `release/` on the Mac's Wi-Fi address at port 8787, or the next free port if another worktree is already serving;
+5. prints the install URL and a QR code in the terminal, and writes `release/qr.png`.
+
+Scan the QR code with the phone (on the same Wi-Fi) and open the downloaded APK. Press Ctrl+C to stop serving. `npm run android:apk` and `npm run android:serve` still work on their own.
+
+`npm test` runs the unit tests for the script's helper logic with Node's built-in test runner.
 
 The `release/` directory is ignored by Git because the APK contains the copyrighted vocabulary. Do not upload the APK or QR code publicly.
