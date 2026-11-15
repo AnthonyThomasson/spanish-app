@@ -108,6 +108,14 @@ describe('RecognitionLanguages', () => {
     expect(languages.languageFor('en')).toBe('en-US');
   });
 
+  it('still falls back to es-ES when the device listed es-AR but the recognizer refuses it', () => {
+    const languages = new RecognitionLanguages();
+    languages.setDeviceLanguages(['es-AR', 'es-ES']);
+    expect(languages.languageFor('es')).toBe('es-AR');
+    expect(languages.unsupported('es')).toBe(true);
+    expect(languages.languageFor('es')).toBe('es-ES');
+  });
+
   it('keeps the default when the device list has no Spanish or is unavailable', () => {
     const languages = new RecognitionLanguages();
     languages.setDeviceLanguages(['en-US']);

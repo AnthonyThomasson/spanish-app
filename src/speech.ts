@@ -71,15 +71,14 @@ let deviceLanguages: Promise<void> | null = null;
  * a missing, failed or slow answer just keeps the default.
  */
 function loadDeviceLanguages(): Promise<void> {
-  deviceLanguages ??= (async () => {
-    try {
-      const timeout = new Promise<undefined>((resolve) => window.setTimeout(resolve, DEVICE_LANGUAGES_TIMEOUT_MS, undefined));
-      const result = await Promise.race([NativeSpeechRecognition.getSupportedLanguages(), timeout]);
-      recognitionLanguages.setDeviceLanguages(result?.languages);
-    } catch {
-      // keep the default
-    }
-  })();
+  if (deviceLanguages) return deviceLanguages;
+  // A late answer still applies to later listens; only this wait is capped.
+  const request = NativeSpeechRecognition.getSupportedLanguages()
+    .then(({ languages }) => recognitionLanguages.setDeviceLanguages(languages))
+    .catch(() => undefined); // keep the default
+  let timer: number | undefined;
+  const timeout = new Promise<void>((resolve) => { timer = window.setTimeout(resolve, DEVICE_LANGUAGES_TIMEOUT_MS); });
+  deviceLanguages = Promise.race([request, timeout]).finally(() => window.clearTimeout(timer));
   return deviceLanguages;
 }
 

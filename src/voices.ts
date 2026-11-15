@@ -56,7 +56,8 @@ export class RecognitionLanguages {
   private deviceSpanish: string | null = null;
 
   languageFor(language: Language): string {
-    if (language === 'es' && this.deviceSpanish) return this.deviceSpanish;
+    // A refusal beats whatever the device listed: the list can name es-AR while the recognizer still rejects it.
+    if (language === 'es' && !this.argentineUnsupported && this.deviceSpanish) return this.deviceSpanish;
     return recognitionLanguage(language, this.argentineUnsupported);
   }
 

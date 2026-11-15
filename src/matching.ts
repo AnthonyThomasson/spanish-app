@@ -143,8 +143,12 @@ export function isCorrectAnswer(spoken: string, expected: string, kind: WordKind
   if (!actual) return false;
   const alternatives = answerAlternatives(expected);
   if (alternatives.some((alternative) => alternative === actual)) return true;
+  // A recognizer often returns "2" for "two" (or "two" for a card that says 2), so digits meet number words.
+  // Two number words never match by value: "once" (an English word) must not accept "eleven", nor "diez" accept "ten".
   const said = numberValue(actual);
-  return said !== null && alternatives.some((alternative) => numberValue(alternative) === said);
+  if (said === null) return false;
+  const saidDigits = /^\d+$/.test(actual);
+  return alternatives.some((alternative) => numberValue(alternative) === said && (saidDigits || /^\d+$/.test(alternative)));
 }
 
 /** Whether recognition returned anything to judge: blank or whitespace-only results are silence, not a wrong answer. */

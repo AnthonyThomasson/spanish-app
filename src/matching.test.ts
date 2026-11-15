@@ -290,6 +290,11 @@ describe('sentence matching: more contractions', () => {
     expect(isCorrectAnswer(b, a, 'sentence')).toBe(true);
   });
 
+  it('reads curly apostrophes in the new contractions', () => {
+    expect(isCorrectAnswer('I’d like water', 'I would like water', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('let’s go home', 'let us go home', 'sentence')).toBe(true);
+  });
+
   it('does not guess at the ambiguous \'d', () => {
     expect(isCorrectAnswer("I'd gone home", 'I would gone home', 'sentence')).toBe(false);
     expect(isCorrectAnswer("I'd gone home", 'I had gone home', 'sentence')).toBe(false);
@@ -347,6 +352,14 @@ describe('word matching: numbers', () => {
     expect(isCorrectAnswer('3', 'two')).toBe(false);
     expect(isCorrectAnswer('tres', 'cuatro')).toBe(false);
     expect(isCorrectAnswer('4', 'forty')).toBe(false);
+  });
+
+  it('does not match two number words by value across languages', () => {
+    expect(isCorrectAnswer('eleven', 'once')).toBe(false);
+    expect(isCorrectAnswer('ten', 'diez')).toBe(false);
+    expect(isCorrectAnswer('one', 'uno')).toBe(false);
+    expect(isCorrectAnswer('once', 'once')).toBe(true);
+    expect(isCorrectAnswer('11', 'once')).toBe(true);
   });
 
   it('does not turn other words into numbers', () => {
