@@ -187,7 +187,7 @@ def card_entry(card: Card, source_page: int) -> dict:
 def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_titles: list[str]) -> tuple[dict, dict]:
     from argentine import argentinize
     from card_parsers import PARSERS
-    from second_person import Lexicon, convert_sentence
+    from second_person import Lexicon, convert_sentence, convert_word_card
 
     images = json.loads(ocr_path.read_text())
     starts = sorted(chapter_starts.items())
@@ -230,6 +230,11 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
             if outcome.status == "converted":
                 report[f"second_person.converted.{outcome.reason}"] += 1
             spanish = outcome.spanish
+        if card.kind == WORD:
+            converted = convert_word_card(spanish)
+            if converted != spanish:
+                report["second_person.word_cards_converted"] += 1
+                spanish = converted
         mapped = argentinize(spanish)
         if mapped != spanish:
             report[f"argentine.changed.{card.kind}"] += 1

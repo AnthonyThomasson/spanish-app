@@ -310,3 +310,26 @@ def convert_sentence(spanish: str, english: str, lexicon: Lexicon, indexes: dict
     if re.search(r"\btú\b", spanish, re.IGNORECASE) or re.search(r"\bcontigo\b", spanish, re.IGNORECASE):
         return convert_tu_present(spanish, english, lexicon, indexes["present"])
     return Outcome("unchanged", spanish, "no_second_person")
+
+
+def convert_word_card(spanish: str) -> str:
+    """The Argentine form of a vocabulary card's Spanish side: tú -> vos, vosotros -> ustedes.
+
+    Only certain cases change: the pronouns themselves, 'ti' after a preposition, a prenominal
+    vuestro -> su, and 'os' used as an indirect object or reflexive -> 'se'. 'contigo' stays
+    (it is correct in Argentina). Anything else, including verb forms, is left as it is.
+    """
+    # A pronoun is converted only on its own or after a preposition; "tú eres" would also need its verb.
+    standalone = r"(^|\b(?:según|entre|como|excepto|salvo|menos|incluso|que)\s)"
+    result = re.sub(rf"{standalone}tú(?=\s*$|\s+y\b)", lambda m: m.group(1) + "vos", spanish, flags=re.IGNORECASE)
+    result = re.sub(
+        r"\b(a|para|de|por|sin|en|como|según|hacia|hasta) ti\b", lambda m: f"{m.group(1)} vos", result, flags=re.IGNORECASE
+    )
+    result = re.sub(rf"{standalone}vosotr(?:os|as)(?=\s*$|\s+y\b)", lambda m: m.group(1) + "ustedes", result, flags=re.IGNORECASE)
+    # A possessive that opens the card, or follows a preposition, is prenominal: vuestro amigo -> su amigo.
+    prepositions = r"(?:de|con|en|a|para|por|sin|sobre)"
+    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:o|a)\b", lambda m: m.group(1) + "su", result, flags=re.IGNORECASE)
+    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:os|as)\b", lambda m: m.group(1) + "sus", result, flags=re.IGNORECASE)
+    # 'os' / 'os lo' / 'os las' (indirect object or reflexive for vosotros) -> 'se ...'
+    result = re.sub(r"(^|,\s*)os\b(?=\s*(?:,|$|\s(?:lo|la|los|las)\b))", lambda m: m.group(1) + "se", result, flags=re.IGNORECASE)
+    return result

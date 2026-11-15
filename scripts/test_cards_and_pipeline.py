@@ -105,6 +105,14 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn("¿Cuánto cobras?", texts)
         self.assertEqual(stats["report"]["second_person.dropped"], 1)
 
+    def test_pronoun_word_cards_become_argentine(self):
+        vocabulary, stats = build([
+            two_columns([("para ti", "for you"), ("según tú", "according to you"), ("contigo", "with you"), ("os lo, os la", "it to you")], "p010_00.png"),
+        ])
+        self.assertEqual([word["spanish"] for word in vocabulary["chapters"][0]["words"]],
+                         ["para vos", "según vos", "contigo", "se lo, se la"])
+        self.assertEqual(stats["report"]["second_person.word_cards_converted"], 3)
+
     def test_argentine_map_applies_to_words_and_sentences(self):
         vocabulary, _ = build([
             two_columns([("el coche", "the car"), ("la patata", "the potato")], "p010_00.png"),

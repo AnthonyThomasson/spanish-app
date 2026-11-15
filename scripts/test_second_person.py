@@ -104,5 +104,28 @@ class VosotrosTests(unittest.TestCase):
             self.assertEqual(run(spanish, english).status, "dropped", spanish)
 
 
+class WordCardTests(unittest.TestCase):
+    def test_pronouns_after_prepositions_and_alone(self):
+        from second_person import convert_word_card as convert
+        self.assertEqual(convert("tú"), "vos")
+        self.assertEqual(convert("según tú"), "según vos")
+        self.assertEqual(convert("para ti"), "para vos")
+        self.assertEqual(convert("vosotros"), "ustedes")
+        self.assertEqual(convert("entre vosotras y yo"), "entre ustedes y yo")
+
+    def test_contigo_and_unsafe_cards_stay(self):
+        from second_person import convert_word_card as convert
+        self.assertEqual(convert("contigo"), "contigo")
+        self.assertEqual(convert("tú eres"), "tú eres")
+        self.assertEqual(convert("el vuestro"), "el vuestro")
+
+    def test_possessive_and_os(self):
+        from second_person import convert_word_card as convert
+        self.assertEqual(convert("vuestro amigo"), "su amigo")
+        self.assertEqual(convert("os"), "se")
+        self.assertEqual(convert("os lo, os la"), "se lo, se la")
+        self.assertEqual(convert("os los, os las"), "se los, se las")
+
+
 if __name__ == "__main__":
     unittest.main()
