@@ -128,7 +128,7 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
     attached_os = _is_attached_os_imperative(first, lexicon) or bool(
         re.fullmatch(r"[a-záéíóú]{2,}[aei]d(?:lo|la|los|las|le|les|me|nos)", first)
     )
-    verb_forms = [token for token in tokens if re.fullmatch(r"[a-záéíóú]+(?:áis|éis)", token.lower())]
+    verb_forms = [token for token in tokens if re.fullmatch(r"[a-záéíóú]+(?:áis|éis)|sois|vais|dais|veis", token.lower())]
     if attached_os:
         return Outcome("dropped", spanish, "vosotros")
     if not (VOSOTROS_MARKERS.search(spanish) or verb_forms or imperative_at_start):
@@ -166,8 +166,8 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
             result = re.sub(rf"^{re.escape(tokens[0])}", match_case(tokens[0], infinitive_form), result)
     except ValueError:
         return Outcome("dropped", spanish, "vosotros")
-    # Any remaining vosotros-looking verb (-ís, -ed...) was not understood.
-    if re.search(rf"\b{WORD}(?:áis|éis)\b", result, re.IGNORECASE):
+    # Any remaining vosotros-looking verb (-ís, sois, vais...) was not understood.
+    if re.search(rf"\b(?:{WORD}(?:áis|éis|ís)|sois|vais|dais|veis|seáis|vayáis|estéis)\b", result, re.IGNORECASE):
         return Outcome("dropped", spanish, "vosotros")
     return Outcome("converted", result, "vosotros")
 
@@ -271,6 +271,8 @@ def convert_tu_present(spanish: str, english: str, lexicon: Lexicon, present_ind
                 recognised = True
             else:
                 return Outcome("dropped", spanish, "ambiguous_verb")
+        elif lower.endswith("ías") and (lower[:-3] + "iar") in lexicon.glosses:
+            return Outcome("dropped", spanish, "ambiguous_verb")  # envías: present tú of enviar, not imperfect
         elif SHARED_TU_VOS_ENDINGS.search(lower) or lower in {"tu", "tus", "te"}:
             recognised = recognised or lower not in {"tu", "tus", "te"}
         pieces.append(spanish[cursor:match.start()])
@@ -297,7 +299,7 @@ def convert_sentence(spanish: str, english: str, lexicon: Lexicon, indexes: dict
     vosotros = convert_vosotros(spanish, english, lexicon)
     if vosotros is not None:
         return vosotros
-    if UD_MARKERS.search(spanish):
+    if UD_MARKERS.search(spanish) and not re.search(r"\btú\b|\bcontigo\b", spanish, re.IGNORECASE):
         return Outcome("unchanged", spanish, "formal")
     imperative = convert_tu_imperative(spanish, english, lexicon, indexes["imperative"])
     if imperative is not None:

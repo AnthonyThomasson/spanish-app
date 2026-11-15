@@ -54,6 +54,7 @@ class VosImperativeTests(unittest.TestCase):
         self.assertEqual(vos_imperative("sentarse"), "sentate")
         self.assertEqual(vos_imperative("irse"), "andate")
         self.assertEqual(vos_imperative("levantarse"), "levantate")
+        self.assertEqual(vos_imperative("reírse"), "reíte")
 
     def test_attached_pronouns(self):
         self.assertEqual(vos_imperative("decir", ["me"]), "decime")

@@ -107,21 +107,37 @@ def parse_number_table(image: dict, report: Counter) -> list[Card]:
     if len(digit_items) < 3 or len(spanish_items) < 3 or not lines:
         return []
     cards = []
+    checked_columns: list[float] = []
+    unchecked = []
     for item in spanish_items:
-        value = spanish_number_value(clean_text(item["text"]))
+        text = clean_text(item["text"])
+        if text.lower() in {"un", "una", "y"}:
+            continue
+        value = spanish_number_value(text)
         row_digits = [
             digit for digit in digit_items
             if abs(center_y(item) - center_y(digit)) <= 0.5 * max(item["height"], digit["height"]) + 0.01
             and digit["x"] < item["x"] + 0.02
         ]
+        if not row_digits:
+            unchecked.append((item, value))
+            continue
         # A digit on the same row must agree with the Spanish words; a mismatch is an OCR slip.
-        if row_digits and all(digits_value(clean_text(digit["text"])) != value for digit in row_digits):
+        if all(digits_value(clean_text(digit["text"])) != value for digit in row_digits):
             report["extra.numbers_unmatched"] += 1
             continue
-        spanish = re.sub(r"\s*\(.*?\)", "", clean_text(item["text"])).strip()
-        cards.append(Card(spanish, english_number(value), WORD))
-        report["extra.numbers"] += 1
+        checked_columns.append(item["x"])
+        cards.append(number_card(text, value, report))
+    # A word without a digit (a missed "0") is kept only when it sits in the same column as checked rows.
+    for item, value in unchecked:
+        if any(abs(item["x"] - column) <= 0.03 for column in checked_columns):
+            cards.append(number_card(clean_text(item["text"]), value, report))
     return cards
+
+
+def number_card(text: str, value: int, report: Counter) -> Card:
+    report["extra.numbers"] += 1
+    return Card(re.sub(r"\s*\(.*?\)", "", text).strip(), english_number(value), WORD)
 
 
 # ---- interrogatives -----------------------------------------------------------------

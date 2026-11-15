@@ -210,6 +210,8 @@ def attach_clitics(vos_base: str, clitics: list[str]) -> str:
     if not clitics:
         return vos_base
     if len(clitics) == 1:
+        if vos_base.endswith(("eí", "aí", "oí")):
+            return vos_base + clitics[0]  # reíte, oíme: the accent marks the hiatus
         return strip_accents(vos_base) + clitics[0]
     return vos_base + "".join(clitics)
 

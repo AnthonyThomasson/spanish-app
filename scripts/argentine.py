@@ -144,18 +144,24 @@ def _tokens(text: str) -> list[tuple[str, bool]]:
     return pieces
 
 
+def _plain_gap(pieces: list[tuple[str, bool]], first: int, second: int) -> bool:
+    """True when only whitespace separates the two words (so 'aguacate (m.)' has no next word)."""
+    return second - first == 2 and not pieces[first + 1][0].strip()
+
+
 def argentinize(text: str) -> str:
     """Apply the Argentine word map to a Spanish string."""
     pieces = _tokens(text)
     words = [index for index, (_, is_word) in enumerate(pieces) if is_word]
     result = [piece for piece, _ in pieces]
+    flipped_genders: list[str] = []
     for position, index in enumerate(words):
         word = pieces[index][0]
         lower = word.lower()
         previous_index = words[position - 1] if position else None
         next_index = words[position + 1] if position + 1 < len(words) else None
-        previous_word = pieces[previous_index][0].lower() if previous_index is not None and index - previous_index == 2 else ""
-        next_word = pieces[next_index][0].lower() if next_index is not None and next_index - index == 2 else ""
+        previous_word = pieces[previous_index][0].lower() if previous_index is not None and _plain_gap(pieces, previous_index, index) else ""
+        next_word = pieces[next_index][0].lower() if next_index is not None and _plain_gap(pieces, index, next_index) else ""
 
         if lower in VERBS:
             replacement = VERBS[lower]
@@ -181,7 +187,13 @@ def argentinize(text: str) -> str:
             article_index = words[position - 1]
             result[article_index] = _match_case(pieces[article_index][0], flip[previous_word])
             result[index] = _match_case(word, replacement)
+            flipped_genders.append(new_gender)
         elif previous_word in NEUTRAL_PREVIOUS_WORDS:
             result[index] = _match_case(word, replacement)
+            flipped_genders.append(new_gender)
     # Re-contract "de el" / "a el" left by flipping la -> el.
-    return re.sub(r"\b(de|a) el\b", lambda match: "del" if match.group(1) == "de" else "al", "".join(result))
+    text = re.sub(r"\b(de|a) el\b", lambda match: "del" if match.group(1) == "de" else "al", "".join(result))
+    if len(flipped_genders) == 1:
+        # A gender tag such as "(m.)" must follow the noun's new gender.
+        text = re.sub(r"\((m|f)\.\)", f"({flipped_genders[0]}.)", text)
+    return text

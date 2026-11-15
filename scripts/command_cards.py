@@ -11,7 +11,7 @@ from pathlib import Path
 
 from card_types import SENTENCE, Card
 from ocr_layout import IGNORED_IMAGES, clean_text, clusters_by_x, match_rows, merge_row_observations
-from spanish_verbs import split_reflexive, vos_imperative
+from spanish_verbs import vos_imperative
 
 INFINITIVE = re.compile(r"^(?:[a-záéíóúñ]+(?:ar|er|ir|ír)(?:se)?|ir|irse)$")
 HEADER = re.compile(r"^(?:infinitive|english|affirmative|negative|(?:tú|ud\.?|uds\.?|vosotros)\s+command)$", re.IGNORECASE)

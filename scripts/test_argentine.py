@@ -21,6 +21,9 @@ class ArgentineMapTests(unittest.TestCase):
         self.assertEqual(argentinize("un ordenador nuevo"), "un ordenador nuevo")
         self.assertEqual(argentinize("mi ordenador es nuevo"), "mi ordenador es nuevo")
 
+    def test_gender_tags_follow_a_gender_change(self):
+        self.assertEqual(argentinize("el aguacate (m.)"), "la palta (f.)")
+
     def test_verbs_follow_the_whole_conjugation(self):
         self.assertEqual(argentinize("Quiero conducir."), "Quiero manejar.")
         self.assertEqual(argentinize("Ella conduce rápido."), "Ella maneja rápido.")

@@ -35,6 +35,12 @@ class TuToVosTests(unittest.TestCase):
     def test_contigo_becomes_con_vos(self):
         self.assertEqual(run("Quiero ir contigo.", "I want to go with you.").spanish, "Quiero ir con vos.")
 
+    def test_present_of_iar_verbs_is_not_mistaken_for_imperfect(self):
+        lexicon = Lexicon()
+        lexicon.add("enviar", "to send")
+        outcome = convert_sentence("¿Tú envías la carta?", "Do you send the letter?", lexicon)
+        self.assertEqual(outcome.status, "dropped")
+
     def test_unknown_verb_is_dropped_not_guessed(self):
         outcome = run("¿Cuánto cobras?", "How much do you charge?")
         self.assertEqual((outcome.status, outcome.reason), ("dropped", "unverified_second_person"))
@@ -92,6 +98,8 @@ class VosotrosTests(unittest.TestCase):
             ("Los amigos vuestros viven aquí.", "Your friends live here."),
             ("Divertíos mucho.", "Have a good time."),
             ("Leedlo.", "Read it."),
+            ("Vosotros sois estudiantes.", "You all are students."),
+            ("Vosotros vivís en Madrid.", "You all live in Madrid."),
         ]:
             self.assertEqual(run(spanish, english).status, "dropped", spanish)
 
