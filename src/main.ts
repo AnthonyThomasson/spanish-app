@@ -466,11 +466,11 @@ function wait(milliseconds: number, token: number): Promise<boolean> {
 
 async function runAuto(card: Card, token: number): Promise<void> {
   setStatus('Listen to the prompt…', 'speaking');
-  await speaker.speak(promptFor(card), promptLanguage(card));
+  await speaker.speak(promptFor(card), promptLanguage(card), card.word.kind);
   if (token !== runId || !await wait(settings.delay * 1000, token)) return;
   revealAnswer();
   setStatus('Here’s the answer.', 'speaking');
-  await speaker.speak(answerFor(card), answerLanguage(card));
+  await speaker.speak(answerFor(card), answerLanguage(card), card.word.kind);
   if (token !== runId || !await wait(1800, token)) return;
   currentIndex += 1;
   showCard();
@@ -478,7 +478,7 @@ async function runAuto(card: Card, token: number): Promise<void> {
 
 async function runAnswer(card: Card, token: number): Promise<void> {
   setStatus('Listen to the prompt…', 'speaking');
-  await speaker.speak(promptFor(card), promptLanguage(card));
+  await speaker.speak(promptFor(card), promptLanguage(card), card.word.kind);
   if (token !== runId || !await wait(350, token)) return;
   startListening(card, token);
 }
@@ -566,7 +566,7 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
     setStatus('Correct. Nice work.', 'correct');
     await speaker.speak('Correct', 'en');
     if (token !== runId) return;
-    await speaker.speak(answerFor(card), answerLanguage(card));
+    await speaker.speak(answerFor(card), answerLanguage(card), card.word.kind);
     if (await wait(900, token)) {
       currentIndex += 1;
       showCard();
@@ -578,7 +578,7 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
   progress.recordMiss(card.chapter, card.word, card.direction);
   revealAnswer();
   setStatus('Not quite — the answer is above. Let’s keep going.');
-  await speaker.speak(answerFor(card), answerLanguage(card));
+  await speaker.speak(answerFor(card), answerLanguage(card), card.word.kind);
   if (await wait(2800, token)) {
     currentIndex += 1;
     showCard();

@@ -4,6 +4,7 @@ import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech
 import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
 import { spokenText } from './spoken-text';
+import type { WordKind } from './types';
 import { chooseVoice, RecognitionLanguages, speechLanguage, type Language } from './voices';
 
 export interface SpeechRecognitionAlternativeLike {
@@ -188,9 +189,9 @@ export class Speaker {
     this.voices = window.speechSynthesis.getVoices();
   }
 
-  speak(text: string, language: Language): Promise<void> {
+  speak(text: string, language: Language, kind: WordKind = 'word'): Promise<void> {
     const end = ownAudio.begin(); // the TTS engine takes audio focus; see own-audio.ts
-    return this.play(spokenText(text), language).finally(end);
+    return this.play(spokenText(text, kind), language).finally(end);
   }
 
   private play(text: string, language: Language): Promise<void> {

@@ -1,26 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import { spokenText } from './spoken-text';
 
-describe('spokenText', () => {
+describe('spokenText for conjugation cards', () => {
   it('leaves out parenthetical notes', () => {
-    expect(spokenText('they (m.) think')).toBe('they think');
-    expect(spokenText('you (formal) think')).toBe('you think');
-    expect(spokenText('yo me siento (sentarse)')).toBe('yo me siento');
-    expect(spokenText('I am (estar)')).toBe('I am');
+    expect(spokenText('they (m.) think', 'conjugation')).toBe('they think');
+    expect(spokenText('you (formal) think', 'conjugation')).toBe('you think');
+    expect(spokenText('yo me siento (sentarse)', 'conjugation')).toBe('yo me siento');
+    expect(spokenText('I am (estar)', 'conjugation')).toBe('I am');
   });
 
-  it('handles a note in the middle, several notes and a trailing note after an alternative', () => {
-    expect(spokenText('to put (nail) polish on')).toBe('to put polish on');
-    expect(spokenText('they (f.) do (hacer) / they (f.) make (hacer)')).toBe('they do / they make');
-    expect(spokenText('I do / I make (hacer)')).toBe('I do / I make');
+  it('speaks alternatives separated by a comma and drops the note after the last one', () => {
+    expect(spokenText('I am able / I can', 'conjugation')).toBe('I am able, I can');
+    expect(spokenText('they (f.) do / they (f.) make (hacer)', 'conjugation')).toBe('they do, they make');
+    expect(spokenText('I do / I make (hacer)', 'conjugation')).toBe('I do, I make');
   });
 
-  it('keeps text without parentheses exactly as it is', () => {
-    expect(spokenText('ella piensa')).toBe('ella piensa');
-    expect(spokenText('¿Cómo estás?')).toBe('¿Cómo estás?');
+  it('keeps plain conjugation text as it is', () => {
+    expect(spokenText('ella piensa', 'conjugation')).toBe('ella piensa');
   });
 
   it('speaks the text as written when only a parenthetical would be left', () => {
-    expect(spokenText('(m.)')).toBe('(m.)');
+    expect(spokenText('(m.)', 'conjugation')).toBe('(m.)');
+  });
+});
+
+describe('spokenText for other cards', () => {
+  it('keeps the parentheticals of a word card, so its meaning is not lost', () => {
+    expect(spokenText('the artist (male)')).toBe('the artist (male)');
+    expect(spokenText('the artist (female)', 'word')).toBe('the artist (female)');
+    expect(spokenText('it to you (all)', 'word')).toBe('it to you (all)');
+  });
+
+  it('keeps sentences and slashes as written', () => {
+    expect(spokenText('Do you (all) want it?', 'sentence')).toBe('Do you (all) want it?');
+    expect(spokenText('the husband / the wife', 'word')).toBe('the husband / the wife');
   });
 });
