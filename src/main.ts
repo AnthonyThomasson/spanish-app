@@ -3,7 +3,7 @@ import { backgroundSession } from './background-session';
 import { isCorrectAnswer } from './matching';
 import { buildNotification } from './notification';
 import { ensureMicrophonePermission } from './microphone';
-import { RecognitionMonitor, recognitionFailureMessage } from './recognition-errors';
+import { RecognitionMonitor, recognitionFailureMessage, recognitionFailureNotice, recognitionRetryDelay } from './recognition-errors';
 import { dispatchBackgroundAction } from './session-actions';
 import { singleFlight } from './single-flight';
 import { shouldAutoPauseWhenHidden } from './session-policy';
@@ -130,6 +130,8 @@ let paused = false;
 let active = false;
 let runId = 0;
 let recognition: SpeechRecognitionLike | null = null;
+/** Why the session paused itself after a recognition failure; shown in the notification until Resume or the next card. */
+let failureNotice: string | null = null;
 let settings = { direction: 'both' as Direction, mode: 'flip' as Mode, delay: 3, shuffle: true };
 
 const promptFor = ({ word, direction }: Card) => direction === 'es-en' ? word.spanish : word.english;
@@ -263,6 +265,7 @@ function showCard(): void {
   }
   misses = 0;
   revealed = false;
+  failureNotice = null;
   recognitionMonitor.reset();
   const card = deck[currentIndex];
   const token = runId;
@@ -300,6 +303,7 @@ function syncBackground(): void {
     answer: answerFor(card),
     revealed,
     paused,
+    notice: failureNotice,
   }));
 }
 
@@ -371,6 +375,7 @@ function startListening(card: Card, token: number): void {
   current.interimResults = false;
   current.maxAlternatives = 5;
   let handled = false;
+  let retryDelay = recognitionRetryDelay('no-speech');
   setStatus('Listening… say your answer.', 'listening');
 
   current.onresult = (event) => {
@@ -387,7 +392,8 @@ function startListening(card: Card, token: number): void {
   current.onerror = (event) => {
     // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
     if (event.error === 'aborted' || token !== runId || !active || paused) return;
-    const verdict = recognitionMonitor.handle(event.error, { native: usingNativeSpeech(), hidden: document.hidden });
+    const verdict = recognitionMonitor.handle(event.error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
+    retryDelay = recognitionRetryDelay(event.error);
     if (verdict === 'pause') {
       handled = true;
       pauseAfterRecognitionFailure(event.error);
@@ -399,7 +405,7 @@ function startListening(card: Card, token: number): void {
     if (recognition === current) recognition = null; // no longer listening
     if (!handled && token === runId && active && !paused) {
       setStatus('I didn’t catch that. Listening again…', 'listening');
-      window.setTimeout(() => startListening(card, token), 250);
+      window.setTimeout(() => startListening(card, token), retryDelay);
     }
   };
   try {
@@ -413,7 +419,9 @@ function pauseAfterRecognitionFailure(error: string): void {
   runId += 1; // invalidate any pending listen retry so Resume starts from a clean slate
   paused = true;
   element('pause-button').textContent = 'Resume';
-  setStatus(recognitionFailureMessage(error, document.hidden));
+  const background = backgroundSession.isBackground();
+  setStatus(recognitionFailureMessage(error, background, usingNativeSpeech()));
+  failureNotice = recognitionFailureNotice(error, background);
   syncBackground();
 }
 
@@ -451,6 +459,7 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
 function togglePause(): void {
   if (settings.mode === 'flip') return;
   paused = !paused;
+  failureNotice = null;
   element('pause-button').textContent = paused ? 'Resume' : 'Pause';
   if (paused) {
     if (settings.mode === 'answer' && !revealed) {
@@ -539,6 +548,7 @@ void backgroundSession.onAction((action, source) => dispatchBackgroundAction(act
   skip: nextCard,
   stop: returnToSetup,
 }, source));
+void backgroundSession.watchAppState();
 // Clear any notification left behind by a previous page load.
 backgroundSession.stop();
 

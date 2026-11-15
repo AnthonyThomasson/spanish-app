@@ -11,6 +11,8 @@ export interface NotificationInput {
   answer: string;
   revealed: boolean;
   paused: boolean;
+  /** Why the session paused itself (for example a microphone failure); replaces the card text while paused. */
+  notice?: string | null;
 }
 
 export interface NotificationState {
@@ -25,7 +27,7 @@ const MODE_LABELS: Record<BackgroundMode, string> = { auto: 'Auto listen', answe
 export function buildNotification(input: NotificationInput): NotificationState {
   return {
     title: `${MODE_LABELS[input.mode]} · ${input.index + 1} / ${input.total}`,
-    text: input.revealed ? `${input.prompt} → ${input.answer}` : input.prompt,
+    text: input.paused && input.notice ? input.notice : input.revealed ? `${input.prompt} → ${input.answer}` : input.prompt,
     paused: input.paused,
     mode: input.mode,
   };

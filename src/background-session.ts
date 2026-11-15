@@ -8,9 +8,15 @@ export interface BackgroundSessionPlugin {
   start(options: { title: string; text: string; paused: boolean; mode: 'auto' | 'answer' }): Promise<void>;
   update(options: { title: string; text: string; paused: boolean }): Promise<void>;
   stop(): Promise<void>;
+  /** Optional: absent from older native builds. */
+  getState?(): Promise<{ background: boolean }>;
   addListener(
     eventName: 'action',
     listener: (event: { action: BackgroundAction; source?: BackgroundActionSource }) => void,
+  ): Promise<{ remove(): Promise<void> }>;
+  addListener(
+    eventName: 'appState',
+    listener: (event: { background: boolean }) => void,
   ): Promise<{ remove(): Promise<void> }>;
 }
 
@@ -19,12 +25,26 @@ export interface BackgroundSession {
   sync(state: NotificationState): void;
   stop(): void;
   onAction(handler: (action: BackgroundAction, source?: BackgroundActionSource) => void): Promise<() => void>;
+  /**
+   * Whether the app is in the background. On Android this is the activity state reported by the plugin,
+   * because the plugin keeps the WebView looking visible and `document.hidden` can't be trusted; elsewhere
+   * it is `document.hidden`.
+   */
+  isBackground(): boolean;
+  /** Starts tracking the native app state. Safe to call on any platform and with older native builds. */
+  watchAppState(): Promise<void>;
   /** Resolves once every queued native call has finished. */
   idle(): Promise<void>;
 }
 
-export function createBackgroundSession(plugin: BackgroundSessionPlugin, enabled: boolean): BackgroundSession {
+export function createBackgroundSession(
+  plugin: BackgroundSessionPlugin,
+  enabled: boolean,
+  isDocumentHidden: () => boolean = () => document.hidden,
+): BackgroundSession {
   let running = false;
+  let nativeBackground = false;
+  let sawAppStateEvent = false; // a live event is newer than a getState() answer that was still in flight
   let generation = 0; // bumped by stop() so a stale failed start can't clobber a newer one
   let queue: Promise<void> = Promise.resolve();
 
@@ -62,6 +82,24 @@ export function createBackgroundSession(plugin: BackgroundSessionPlugin, enabled
         return () => { void handle.remove().catch(() => {}); };
       } catch {
         return () => {};
+      }
+    },
+    isBackground: () => (enabled ? nativeBackground : isDocumentHidden()),
+    async watchAppState() {
+      if (!enabled) return;
+      try {
+        await plugin.addListener('appState', (event) => {
+          sawAppStateEvent = true;
+          nativeBackground = event.background;
+        });
+      } catch {
+        return; // older native build: stay on "foreground"
+      }
+      try {
+        const state = await plugin.getState?.();
+        if (state && !sawAppStateEvent) nativeBackground = state.background;
+      } catch {
+        // getState is optional
       }
     },
     idle: () => queue,

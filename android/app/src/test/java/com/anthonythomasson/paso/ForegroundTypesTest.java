@@ -12,21 +12,26 @@ public class ForegroundTypesTest {
 
     @Test
     public void usesMediaPlaybackAndMicrophoneWhenRecordAudioGranted() {
-        assertEquals(MEDIA | MIC, ForegroundTypes.resolve(34, true));
+        assertEquals(MEDIA | MIC, ForegroundTypes.resolve(34, true, SessionMode.ANSWER));
     }
 
     @Test
     public void dropsMicrophoneWhenRecordAudioNotGrantedToAvoidSecurityException() {
-        assertEquals(MEDIA, ForegroundTypes.resolve(34, false));
+        assertEquals(MEDIA, ForegroundTypes.resolve(34, false, SessionMode.ANSWER));
     }
 
     @Test
     public void microphoneTypeDoesNotExistBeforeApi30() {
-        assertEquals(MEDIA, ForegroundTypes.resolve(29, true));
+        assertEquals(MEDIA, ForegroundTypes.resolve(29, true, SessionMode.ANSWER));
     }
 
     @Test
     public void noTypesBeforeApi29() {
-        assertEquals(0, ForegroundTypes.resolve(28, true));
+        assertEquals(0, ForegroundTypes.resolve(28, true, SessionMode.ANSWER));
+    }
+
+    @Test
+    public void autoListenNeverGetsTheMicrophoneTypeEvenWhenGranted() {
+        assertEquals(MEDIA, ForegroundTypes.resolve(34, true, SessionMode.AUTO));
     }
 }

@@ -35,6 +35,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     private boolean webViewPrioritySaved;
     private int savedRendererPriority;
     private boolean savedRendererWaived;
+    private final AppState appState = new AppState();
 
     @Override
     public void load() {
@@ -83,7 +84,8 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
         SessionState state = new SessionState(
             call.getString("title"),
             call.getString("text"),
-            Boolean.TRUE.equals(call.getBoolean("paused", false))
+            Boolean.TRUE.equals(call.getBoolean("paused", false)),
+            SessionMode.fromWireName(call.getString("mode"))
         );
         try {
             BackgroundSessionService.start(getContext(), state);
@@ -120,6 +122,18 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
         call.resolve();
     }
 
+    /** Whether the activity is in the background; JS can't trust document.hidden while a session runs. */
+    @PluginMethod
+    public void getState(PluginCall call) {
+        call.resolve(appStateEvent());
+    }
+
+    private JSObject appStateEvent() {
+        JSObject state = new JSObject();
+        state.put("background", appState.isBackground());
+        return state;
+    }
+
     @PluginMethod
     public void stop(PluginCall call) {
         BackgroundSessionService.stop(getContext());
@@ -132,9 +146,18 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     @Override
     protected void handleOnPause() {
         super.handleOnPause();
+        appState.onPause();
+        notifyListeners(AppState.EVENT, appStateEvent());
         if (BackgroundSessionService.isActive()) {
             keepWebViewRunning();
         }
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        appState.onResume();
+        notifyListeners(AppState.EVENT, appStateEvent());
     }
 
     @Override

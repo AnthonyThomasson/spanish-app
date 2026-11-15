@@ -3,17 +3,20 @@ import { createBackgroundSession, type BackgroundSessionPlugin } from './backgro
 
 function fakePlugin() {
   const listeners: Array<(event: { action: 'pause' | 'resume' | 'skip' | 'stop'; source?: 'notification' | 'audio-focus' }) => void> = [];
+  const appStateListeners: Array<(event: { background: boolean }) => void> = [];
   const remove = vi.fn(async () => {});
   const plugin = {
     start: vi.fn(async () => {}),
     update: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
-    addListener: vi.fn(async (_name: 'action', listener: (typeof listeners)[number]) => {
-      listeners.push(listener);
+    getState: vi.fn(async () => ({ background: false })),
+    addListener: vi.fn(async (name: string, listener: (event: never) => void) => {
+      if (name === 'action') listeners.push(listener as (typeof listeners)[number]);
+      else appStateListeners.push(listener as (event: { background: boolean }) => void);
       return { remove };
     }),
   } satisfies BackgroundSessionPlugin;
-  return { plugin, listeners, remove };
+  return { plugin, listeners, appStateListeners, remove };
 }
 
 const state = { title: 'Auto listen · 1 / 5', text: 'hola', paused: false, mode: 'auto' as const };
@@ -30,6 +33,7 @@ describe('createBackgroundSession', () => {
     expect(plugin.update).not.toHaveBeenCalled();
     expect(plugin.stop).not.toHaveBeenCalled();
     expect(plugin.addListener).not.toHaveBeenCalled();
+    expect(plugin.getState).not.toHaveBeenCalled();
   });
 
   it('starts on the first sync and updates afterwards, without the mode', async () => {
@@ -114,5 +118,51 @@ describe('createBackgroundSession', () => {
     expect(handler).toHaveBeenNthCalledWith(2, 'pause', 'audio-focus');
     unsubscribe();
     expect(remove).toHaveBeenCalledOnce();
+  });
+
+  describe('isBackground', () => {
+    it('follows document.hidden when disabled (browser)', () => {
+      const { plugin } = fakePlugin();
+      let hidden = false;
+      const session = createBackgroundSession(plugin, false, () => hidden);
+      expect(session.isBackground()).toBe(false);
+      hidden = true;
+      expect(session.isBackground()).toBe(true);
+    });
+
+    it('follows the native appState event and ignores document.hidden on native', async () => {
+      const { plugin, appStateListeners } = fakePlugin();
+      const session = createBackgroundSession(plugin, true, () => false);
+      await session.watchAppState();
+      expect(session.isBackground()).toBe(false);
+      appStateListeners[0]({ background: true });
+      expect(session.isBackground()).toBe(true);
+      appStateListeners[0]({ background: false });
+      expect(session.isBackground()).toBe(false);
+    });
+
+    it('does not treat a hidden document as background on native', async () => {
+      const { plugin } = fakePlugin();
+      const session = createBackgroundSession(plugin, true, () => true);
+      await session.watchAppState();
+      expect(session.isBackground()).toBe(false);
+    });
+
+    it('reads the initial native state with getState', async () => {
+      const { plugin } = fakePlugin();
+      plugin.getState.mockResolvedValueOnce({ background: true });
+      const session = createBackgroundSession(plugin, true);
+      await session.watchAppState();
+      expect(session.isBackground()).toBe(true);
+    });
+
+    it('keeps working when an older native build has no getState or appState', async () => {
+      const { plugin } = fakePlugin();
+      plugin.getState.mockRejectedValueOnce(new Error('not implemented'));
+      plugin.addListener.mockRejectedValueOnce(new Error('nope'));
+      const session = createBackgroundSession(plugin, true);
+      await expect(session.watchAppState()).resolves.toBeUndefined();
+      expect(session.isBackground()).toBe(false);
+    });
   });
 });

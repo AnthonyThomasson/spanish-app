@@ -8,8 +8,14 @@ public final class SessionState {
     private final String title;
     private final String text;
     private final boolean paused;
+    private final SessionMode mode;
 
     public SessionState(String title, String text, boolean paused) {
+        this(title, text, paused, SessionMode.AUTO);
+    }
+
+    public SessionState(String title, String text, boolean paused, SessionMode mode) {
+        this.mode = mode == null ? SessionMode.AUTO : mode;
         this.title = isBlank(title) ? DEFAULT_TITLE : title;
         this.text = isBlank(text) ? "" : text;
         this.paused = paused;
@@ -25,6 +31,15 @@ public final class SessionState {
 
     public boolean paused() {
         return paused;
+    }
+
+    public SessionMode mode() {
+        return mode;
+    }
+
+    /** New notification content for the same session: the mode chosen at start() never changes. */
+    public SessionState withContent(String title, String text, boolean paused) {
+        return new SessionState(title, text, paused, mode);
     }
 
     /** The action the first button performs: Pause while running, Resume while paused. */

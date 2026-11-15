@@ -31,6 +31,7 @@ public class BackgroundSessionService extends android.app.Service {
     private static final String EXTRA_TITLE = "title";
     private static final String EXTRA_TEXT = "text";
     private static final String EXTRA_PAUSED = "paused";
+    private static final String EXTRA_MODE = "mode";
     private static final String WAKE_LOCK_TAG = "paso:session";
     /** Safety net so a leaked lock cannot drain the battery forever; refreshed on every update. */
     private static final long WAKE_LOCK_TIMEOUT_MS = 6L * 60 * 60 * 1000;
@@ -77,7 +78,8 @@ public class BackgroundSessionService extends android.app.Service {
             .setAction(ACTION_CONFIGURE)
             .putExtra(EXTRA_TITLE, state.title())
             .putExtra(EXTRA_TEXT, state.text())
-            .putExtra(EXTRA_PAUSED, state.paused());
+            .putExtra(EXTRA_PAUSED, state.paused())
+            .putExtra(EXTRA_MODE, state.mode().wireName());
     }
 
     @Override
@@ -106,11 +108,13 @@ public class BackgroundSessionService extends android.app.Service {
             handleNotificationAction(action);
             return START_NOT_STICKY;
         }
-        state = new SessionState(
-            intent.getStringExtra(EXTRA_TITLE),
-            intent.getStringExtra(EXTRA_TEXT),
-            intent.getBooleanExtra(EXTRA_PAUSED, false)
-        );
+        String title = intent.getStringExtra(EXTRA_TITLE);
+        String text = intent.getStringExtra(EXTRA_TEXT);
+        boolean paused = intent.getBooleanExtra(EXTRA_PAUSED, false);
+        // Only start() names a mode; update() keeps the one the session began with.
+        state = intent.hasExtra(EXTRA_MODE)
+            ? new SessionState(title, text, paused, SessionMode.fromWireName(intent.getStringExtra(EXTRA_MODE)))
+            : state.withContent(title, text, paused);
         if (state.needsWakeLock()) {
             acquireWakeLock();
             // Focus is kept while paused; it is only re-requested when the user resumes.
@@ -123,6 +127,12 @@ public class BackgroundSessionService extends android.app.Service {
     }
 
     private void handleNotificationAction(SessionAction action) {
+        if (action.needsResourcesBeforeForwarding()) {
+            // The phone may be locked and dozing: get the CPU and audio focus back now, before JS
+            // (which will call update(paused=false)) has had a chance to run.
+            acquireWakeLock();
+            requestAudioFocus();
+        }
         SessionEvents.dispatch(action, SessionSource.NOTIFICATION);
         if (action == SessionAction.STOP) {
             // Stop must work even when the WebView is gone and nobody listens.
@@ -170,13 +180,13 @@ public class BackgroundSessionService extends android.app.Service {
         Notification notification = buildNotification();
         boolean micGranted =
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-        int types = ForegroundTypes.resolve(Build.VERSION.SDK_INT, micGranted);
+        int types = ForegroundTypes.resolve(Build.VERSION.SDK_INT, micGranted, state.mode());
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types);
             return true;
         } catch (RuntimeException e) {
             // Microphone type can be refused (e.g. started from the background): retry with media only.
-            int mediaOnly = ForegroundTypes.resolve(Build.VERSION.SDK_INT, false);
+            int mediaOnly = ForegroundTypes.resolve(Build.VERSION.SDK_INT, false, state.mode());
             if (mediaOnly != types) {
                 try {
                     ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
@@ -201,6 +211,7 @@ public class BackgroundSessionService extends android.app.Service {
             .setSmallIcon(R.drawable.ic_stat_session)
             .setContentTitle(state.title())
             .setContentText(state.text())
+            .setStyle(new Notification.BigTextStyle().bigText(state.text()))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)

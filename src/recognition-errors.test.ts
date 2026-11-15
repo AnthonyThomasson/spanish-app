@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { RecognitionFailureTracker, RecognitionMonitor, classifyNativeRecognitionError, recognitionFailureMessage } from './recognition-errors';
+import {
+  RecognitionFailureTracker,
+  RecognitionMonitor,
+  classifyNativeRecognitionError,
+  recognitionFailureMessage,
+  recognitionFailureNotice,
+  recognitionRetryDelay,
+} from './recognition-errors';
 
 describe('classifyNativeRecognitionError', () => {
   it('maps permission problems to not-allowed', () => {
@@ -14,10 +21,17 @@ describe('classifyNativeRecognitionError', () => {
     expect(classifyNativeRecognitionError("Didn't understand, please try again.")).toBe('no-speech');
   });
 
-  it('treats everything else as a start failure', () => {
+  it('treats genuine audio failures as audio-capture', () => {
     expect(classifyNativeRecognitionError('Audio recording error')).toBe('audio-capture');
-    expect(classifyNativeRecognitionError('RecognitionService busy')).toBe('audio-capture');
-    expect(classifyNativeRecognitionError('Client side error')).toBe('audio-capture');
+    expect(classifyNativeRecognitionError('Something unexpected')).toBe('audio-capture');
+  });
+
+  it('treats network, client and busy errors as transient, not audio failures', () => {
+    expect(classifyNativeRecognitionError('Network error')).toBe('network');
+    expect(classifyNativeRecognitionError('Network timeout')).toBe('network');
+    expect(classifyNativeRecognitionError('error from server')).toBe('network');
+    expect(classifyNativeRecognitionError('Client side error')).toBe('network');
+    expect(classifyNativeRecognitionError('RecognitionService busy')).toBe('busy');
   });
 });
 
@@ -38,6 +52,13 @@ describe('RecognitionFailureTracker', () => {
 });
 
 describe('recognitionFailureMessage', () => {
+  it('points Android users at app settings, not browser settings', () => {
+    const message = recognitionFailureMessage('not-allowed', false, true);
+    expect(message).not.toMatch(/browser/i);
+    expect(message).toMatch(/app settings|phone settings/i);
+    expect(recognitionFailureMessage('not-allowed', false)).toMatch(/browser settings/);
+  });
+
   it('explains the background limitation when hidden', () => {
     expect(recognitionFailureMessage('not-allowed', true)).toMatch(/background/i);
     expect(recognitionFailureMessage('audio-capture', true)).toMatch(/Resume/);
@@ -104,5 +125,41 @@ describe('RecognitionMonitor', () => {
     monitor.handle('audio-capture', foreground);
     monitor.handle('no-speech', foreground);
     expect(monitor.handle('audio-capture', foreground)).toBe('retry');
+  });
+});
+
+describe('recognitionFailureNotice', () => {
+  it('explains a background block and a foreground failure for the notification', () => {
+    expect(recognitionFailureNotice('not-allowed', true)).toBe('Microphone blocked in the background — open the app and press Resume');
+    expect(recognitionFailureNotice('no-speech', true)).toMatch(/background/);
+    expect(recognitionFailureNotice('audio-capture', false)).toBe('The microphone isn’t responding — press Resume to retry');
+    expect(recognitionFailureNotice('not-allowed', false)).toMatch(/Resume/);
+  });
+});
+
+describe('recognitionRetryDelay', () => {
+  it('retries quickly, but backs off when the recognizer is busy', () => {
+    expect(recognitionRetryDelay('no-speech')).toBe(250);
+    expect(recognitionRetryDelay('network')).toBe(250);
+    expect(recognitionRetryDelay('busy')).toBeGreaterThan(250);
+  });
+});
+
+describe('RecognitionMonitor transient errors', () => {
+  const foreground = { native: true, hidden: false };
+
+  it('never pauses for network, client or busy errors', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 20; i++) expect(monitor.handle('network', foreground)).toBe('retry');
+    for (let i = 0; i < 20; i++) expect(monitor.handle('busy', foreground)).toBe('retry');
+  });
+
+  it('does not count them toward the audio-failure pause or clear it', () => {
+    const monitor = new RecognitionMonitor();
+    monitor.handle('audio-capture', foreground);
+    monitor.handle('network', foreground);
+    monitor.handle('busy', foreground);
+    monitor.handle('audio-capture', foreground);
+    expect(monitor.handle('audio-capture', foreground)).toBe('pause');
   });
 });

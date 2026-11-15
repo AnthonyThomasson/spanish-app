@@ -1,7 +1,9 @@
 package com.anthonythomasson.paso;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -31,5 +33,13 @@ public class SessionActionTest {
     public void unknownOrNullIntentActionsMapToNull() {
         assertNull(SessionAction.fromIntentAction("android.intent.action.MAIN"));
         assertNull(SessionAction.fromIntentAction(null));
+    }
+
+    @Test
+    public void onlyResumeNeedsTheCpuAndAudioFocusBeforeJsRuns() {
+        assertTrue(SessionAction.RESUME.needsResourcesBeforeForwarding());
+        assertFalse(SessionAction.PAUSE.needsResourcesBeforeForwarding());
+        assertFalse(SessionAction.SKIP.needsResourcesBeforeForwarding());
+        assertFalse(SessionAction.STOP.needsResourcesBeforeForwarding());
     }
 }

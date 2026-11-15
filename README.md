@@ -102,10 +102,10 @@ The notification has the same controls as the screen:
 
 The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. Speak answers ignores the brief audio-focus change caused by its own speech recognizer while it is listening.
 
-Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background.
+Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background. Auto listen never claims the microphone: its service only plays audio.
 
 Flip cards is not a background session and does not use the service. In a browser, Auto listen and Speak answers still pause when the tab is hidden.
 
-Speak answers needs the microphone, and Android may refuse microphone access to an app that is not in the foreground. If speech recognition fails in the background (microphone access blocked, repeated start failures, or several attempts in a row that hear nothing while the app is in the background), the session pauses with a message and the notification shows Resume; open the app and press Resume to continue. Auto listen does not use the microphone and is unaffected.
+Speak answers needs the microphone, and Android may refuse microphone access to an app that is not in the foreground. If speech recognition fails in the background (microphone access blocked, repeated start failures, or several attempts in a row that hear nothing while the app is in the background), the session pauses and both the screen and the notification say why (for example “Microphone blocked in the background — open the app and press Resume”), with a Resume button; open the app and press Resume to continue. Temporary network, busy-recognizer or client errors are retried quietly and do not pause the session. Auto listen does not use the microphone and is unaffected.
 
 The `release/` directory is ignored by Git because the APK contains the copyrighted vocabulary. Do not upload the APK or QR code publicly.

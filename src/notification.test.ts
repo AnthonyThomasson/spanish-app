@@ -21,4 +21,15 @@ describe('buildNotification', () => {
     expect(buildNotification({ ...base, paused: true })).toMatchObject({ paused: true, mode: 'auto' });
     expect(buildNotification({ ...base, mode: 'answer' }).mode).toBe('answer');
   });
+
+  it('shows a failure notice instead of the card text while paused', () => {
+    const state = buildNotification({ ...base, paused: true, notice: 'Microphone blocked — press Resume' });
+    expect(state.text).toBe('Microphone blocked — press Resume');
+    expect(state.paused).toBe(true);
+  });
+
+  it('ignores a failure notice once the session is running again', () => {
+    expect(buildNotification({ ...base, revealed: true, notice: 'old failure' }).text).toBe('la casa → the house');
+    expect(buildNotification({ ...base, notice: null }).text).toBe('la casa');
+  });
 });

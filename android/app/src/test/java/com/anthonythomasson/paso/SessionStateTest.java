@@ -32,4 +32,24 @@ public class SessionStateTest {
         assertTrue(new SessionState("t", "x", false).needsWakeLock());
         assertFalse(new SessionState("t", "x", true).needsWakeLock());
     }
+
+    @Test
+    public void modeDefaultsToAutoListen() {
+        assertEquals(SessionMode.AUTO, new SessionState("t", "x", false).mode());
+    }
+
+    @Test
+    public void keepsTheModeItWasStartedWith() {
+        SessionState started = new SessionState("t", "x", false, SessionMode.ANSWER);
+        assertEquals(SessionMode.ANSWER, started.mode());
+    }
+
+    @Test
+    public void updatingTheContentKeepsTheMode() {
+        SessionState updated = new SessionState("t", "x", false, SessionMode.ANSWER).withContent("t2", "y", true);
+        assertEquals(SessionMode.ANSWER, updated.mode());
+        assertEquals("t2", updated.title());
+        assertEquals("y", updated.text());
+        assertTrue(updated.paused());
+    }
 }
