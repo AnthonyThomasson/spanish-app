@@ -4,6 +4,7 @@ import { allHiddenMessage, formatChapterCount, formatSelectionSummary, pluralize
 import { isCorrectAnswer } from './matching';
 import { buildNotification } from './notification';
 import { ensureMicrophonePermission } from './microphone';
+import { ownAudio } from './own-audio';
 import { createProgress, type DeckCard } from './progress';
 import { RecognitionMonitor, recognitionFailureMessage, recognitionFailureNotice, recognitionRetryDelay } from './recognition-errors';
 import { dispatchBackgroundAction } from './session-actions';
@@ -481,6 +482,7 @@ function startListening(card: Card, token: number): void {
   recognition?.abort();
   const current = new Recognition();
   recognition = current;
+  ownAudio.touch();
   current.lang = answerLanguage(card) === 'es' ? 'es-ES' : 'en-US';
   current.continuous = false;
   current.interimResults = false;
@@ -514,6 +516,7 @@ function startListening(card: Card, token: number): void {
   };
   current.onend = () => {
     if (recognition === current) recognition = null; // no longer listening
+    ownAudio.touch(); // the recognizer's audio-focus change can arrive after it closes
     if (!handled && token === runId && active && !paused) {
       setStatus('I didn’t catch that. Listening again…', 'listening');
       window.setTimeout(() => startListening(card, token), retryDelay);
@@ -539,6 +542,7 @@ function pauseAfterRecognitionFailure(error: string): void {
 async function handleSpokenAnswer(correct: boolean, card: Card, token: number): Promise<void> {
   recognition?.abort();
   recognition = null;
+  ownAudio.touch();
   if (token !== runId) return;
   if (correct) {
     progress.recordCorrect(card.chapter, card.word, card.direction);
@@ -678,6 +682,7 @@ void backgroundSession.onAction((action, source) => dispatchBackgroundAction(act
   isActive: () => active && settings.mode !== 'flip',
   isPaused: () => paused,
   isListening: () => recognition !== null,
+  isOwnAudio: () => ownAudio.isActive(),
   pause: togglePause,
   resume: togglePause,
   skip: nextCard,

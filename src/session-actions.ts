@@ -6,6 +6,8 @@ export interface SessionControls {
   isPaused(): boolean;
   /** True while our own speech recognizer is open. */
   isListening(): boolean;
+  /** True while our own speech or recognizer audio is active (or just ended): it takes audio focus itself. */
+  isOwnAudio?(): boolean;
   pause(): void;
   resume(): void;
   skip(): void;
@@ -21,8 +23,8 @@ export function dispatchBackgroundAction(
   if (!controls.isActive()) return;
   switch (action) {
     case 'pause':
-      // The system recognizer takes transient audio focus itself; that must not pause Speak answers.
-      if (source === 'audio-focus' && controls.isListening()) break;
+      // Our own speech synthesis and the system recognizer take audio focus themselves; that must not pause Speak answers.
+      if (source === 'audio-focus' && (controls.isListening() || controls.isOwnAudio?.())) break;
       if (!controls.isPaused()) controls.pause();
       break;
     case 'resume':

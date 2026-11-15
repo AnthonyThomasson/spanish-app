@@ -53,6 +53,24 @@ describe('dispatchBackgroundAction', () => {
     expect(c.stop).not.toHaveBeenCalled();
   });
 
+  it('ignores an audio-focus pause while our own speech or recognizer audio is active', () => {
+    const c = controls({ isOwnAudio: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus');
+    expect(c.pause).not.toHaveBeenCalled();
+  });
+
+  it('still pauses on an audio-focus loss when none of our audio is active', () => {
+    const c = controls({ isOwnAudio: () => false });
+    dispatchBackgroundAction('pause', c, 'audio-focus');
+    expect(c.pause).toHaveBeenCalledOnce();
+  });
+
+  it('pauses on a notification Pause even while our own audio is active', () => {
+    const c = controls({ isOwnAudio: () => true, isListening: () => true });
+    dispatchBackgroundAction('pause', c, 'notification');
+    expect(c.pause).toHaveBeenCalledOnce();
+  });
+
   it('ignores an audio-focus pause while our own recognizer is listening', () => {
     const c = controls({ isListening: () => true });
     dispatchBackgroundAction('pause', c, 'audio-focus');

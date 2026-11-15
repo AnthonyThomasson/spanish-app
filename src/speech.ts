@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-community/speech-recognition';
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
+import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
 
 export interface SpeechRecognitionAlternativeLike {
@@ -150,6 +151,11 @@ export class Speaker {
   }
 
   speak(text: string, language: Language): Promise<void> {
+    const end = ownAudio.begin(); // the TTS engine takes audio focus; see own-audio.ts
+    return this.play(text, language).finally(end);
+  }
+
+  private play(text: string, language: Language): Promise<void> {
     if (usingNativeSpeech()) return this.speakNative(text, language);
     if (!('speechSynthesis' in window)) return Promise.resolve();
     this.refreshVoices();

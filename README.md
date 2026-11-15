@@ -109,7 +109,7 @@ The notification has the same controls as the screen:
 - **Skip** moves to the next card. Like the on-screen Skip, skipping while paused resumes playback on the next card.
 - **Stop** ends the session and returns to deck setup.
 
-The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. Speak answers ignores the brief audio-focus change caused by its own speech recognizer while it is listening.
+The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. The app’s own speech (text-to-speech and the speech recognizer) takes audio focus too; those changes, including ones that arrive just after the speech ends, never pause the session.
 
 Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background. Auto listen never claims the microphone: its service only plays audio.
 
