@@ -502,7 +502,7 @@ function startListening(card: Card, token: number): void {
   const handleRecognitionError = (error: string) => {
     // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
     if (error === 'aborted' || token !== runId || !active || paused) return;
-    if (error === 'language-not-supported' && fallBackFromArgentineRecognition()) return; // onend listens again in es-ES
+    if (error === 'language-not-supported' && fallBackFromArgentineRecognition(answerLanguage(card))) return; // onend listens again in es-ES
     const verdict = recognitionMonitor.handle(error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
     retryDelay = recognitionMonitor.retryDelay(error);
     if (verdict === 'pause') {

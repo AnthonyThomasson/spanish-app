@@ -3,7 +3,7 @@ import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-communi
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
 import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
-import { chooseVoice, recognitionLanguage, speechLanguage, type Language } from './voices';
+import { chooseVoice, RecognitionLanguages, speechLanguage, type Language } from './voices';
 
 export interface SpeechRecognitionAlternativeLike {
   transcript: string;
@@ -47,18 +47,40 @@ declare global {
   }
 }
 
-let argentineUnsupported = false;
+const recognitionLanguages = new RecognitionLanguages();
 
 /** The language tag to listen with: Argentine Spanish where the recognizer supports it. */
 export function recognitionLang(language: Language): string {
-  return recognitionLanguage(language, argentineUnsupported);
+  return recognitionLanguages.languageFor(language);
 }
 
-/** Switches Spanish recognition to es-ES after a recognizer refuses es-AR. False when already switched. */
-export function fallBackFromArgentineRecognition(): boolean {
-  if (argentineUnsupported) return false;
-  argentineUnsupported = true;
-  return true;
+/**
+ * Switches Spanish recognition to es-ES after a recognizer refuses es-AR. False for any other language or when
+ * it already switched, so only a Spanish recognizer can trigger it and it cannot loop.
+ */
+export function fallBackFromArgentineRecognition(language: Language): boolean {
+  return recognitionLanguages.unsupported(language);
+}
+
+const DEVICE_LANGUAGES_TIMEOUT_MS = 1500;
+let deviceLanguages: Promise<void> | null = null;
+
+/**
+ * Asks the Android recognizer once which languages it offers (the plugin cannot report an unsupported language
+ * when listening: it only says "Didn't understand", which would loop silently). Unavailable on Android 13+, so
+ * a missing, failed or slow answer just keeps the default.
+ */
+function loadDeviceLanguages(): Promise<void> {
+  deviceLanguages ??= (async () => {
+    try {
+      const timeout = new Promise<undefined>((resolve) => window.setTimeout(resolve, DEVICE_LANGUAGES_TIMEOUT_MS, undefined));
+      const result = await Promise.race([NativeSpeechRecognition.getSupportedLanguages(), timeout]);
+      recognitionLanguages.setDeviceLanguages(result?.languages);
+    } catch {
+      // keep the default
+    }
+  })();
+  return deviceLanguages;
 }
 
 export function usingNativeSpeech(): boolean {
@@ -102,9 +124,11 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
         this.fail('not-allowed');
         return;
       }
+      const spanish = this.lang.toLowerCase().startsWith('es');
+      if (spanish) await loadDeviceLanguages();
       if (this.aborted) return;
       const { matches = [] } = await NativeSpeechRecognition.start({
-        language: this.lang,
+        language: spanish ? recognitionLang('es') : this.lang,
         maxResults: this.maxAlternatives,
         partialResults: false,
         popup: false,

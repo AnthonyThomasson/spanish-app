@@ -32,3 +32,46 @@ export function recognitionLanguage(language: Language, argentineUnsupported = f
   if (language === 'en') return 'en-US';
   return argentineUnsupported ? 'es-ES' : 'es-AR';
 }
+
+const SPANISH_RECOGNITION_PREFERENCE = ['es-ar', 'es-es', 'es-mx'];
+
+/**
+ * The Spanish recognition language to use from the device's list: Argentine, then Spain, then Mexican, then any
+ * Spanish. Returns the device's own spelling, or null when the list has no Spanish or is unusable.
+ */
+export function pickSpanishRecognitionLanguage(supported: unknown): string | null {
+  if (!Array.isArray(supported)) return null;
+  const tags = supported.filter((tag): tag is string => typeof tag === 'string');
+  const normalized = (tag: string) => tag.toLowerCase().replace('_', '-');
+  for (const preferred of SPANISH_RECOGNITION_PREFERENCE) {
+    const found = tags.find((tag) => normalized(tag) === preferred);
+    if (found) return found;
+  }
+  return tags.find((tag) => normalized(tag).startsWith('es')) ?? null;
+}
+
+/** Which language each recognizer listens in, and the one-time fall-back from Argentine Spanish. */
+export class RecognitionLanguages {
+  private argentineUnsupported = false;
+  private deviceSpanish: string | null = null;
+
+  languageFor(language: Language): string {
+    if (language === 'es' && this.deviceSpanish) return this.deviceSpanish;
+    return recognitionLanguage(language, this.argentineUnsupported);
+  }
+
+  /** Records what a native recognizer says it supports. Ignored when it has no Spanish. */
+  setDeviceLanguages(supported: unknown): void {
+    this.deviceSpanish = pickSpanishRecognitionLanguage(supported);
+  }
+
+  /**
+   * A recognizer refused its language. True when the Spanish recognizer should be retried in es-ES; false for
+   * English or when it already fell back, so an unrelated or repeated error cannot loop.
+   */
+  unsupported(language: Language): boolean {
+    if (language !== 'es' || this.argentineUnsupported) return false;
+    this.argentineUnsupported = true;
+    return true;
+  }
+}

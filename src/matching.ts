@@ -1,3 +1,4 @@
+import { canonicalizeNumbers, numberValue } from './numbers';
 import type { WordKind } from './types';
 
 const leadingArticles = /^(?:el|la|los|las|un|una|the|a|an|to)\s+/;
@@ -36,8 +37,11 @@ const subjectPronouns: Record<string, string> = {
 };
 
 const TOLERANCE_MIN_WORDS = 6;
-/** Words that flip a sentence's meaning: a slip is never forgiven when it adds or drops one. */
-const NEGATIONS = new Set(['not', 'no', 'never', 'nobody', 'nothing', 'nunca', 'nadie', 'nada', 'jamas', 'tampoco', 'ni']);
+/**
+ * The only words a long sentence may gain or lose: articles and linking words. Anything that carries
+ * meaning (pronouns, verb forms, numbers, negations, nouns, prepositions like with/without) must match.
+ */
+const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'to', 'that', 'of', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'que']);
 const MAX_PARENTHETICALS = 4;
 
 function expandContractions(text: string): string {
@@ -46,22 +50,28 @@ function expandContractions(text: string): string {
     .replace(/\bcan't\b/g, 'can not')
     .replace(/\bcannot\b/g, 'can not')
     .replace(/\bwon't\b/g, 'will not')
+    .replace(/\blet's\b/g, 'let us')
+    .replace(/\by'?all\b/g, 'you all')
+    .replace(/\byou guys\b/g, 'you all')
     .replace(/\b(\w+)n't\b/g, '$1 not')
     .replace(/\bi'm\b/g, 'i am')
-    .replace(/\b(he|she|it)'s\b/g, '$1 is')
+    .replace(/\b(he|she|it|that|there|here|where|who|what|how)'s\b/g, '$1 is')
     .replace(/\b(we|they|you)'re\b/g, '$1 are')
     .replace(/\b(i|we|they|you)'ve\b/g, '$1 have')
-    .replace(/\b(i|he|she|it|we|they|you)'ll\b/g, '$1 will');
+    .replace(/\b(i|he|she|it|we|they|you)'ll\b/g, '$1 will')
+    // 'd is "would" or "had"; only the polite forms are unambiguous.
+    .replace(/\b(i|he|she|it|we|they|you)'d (?=like\b|love\b|prefer\b|rather\b)/g, '$1 would ');
 }
 
 /** Lowercase, accent-free words. Unlike a word card, a sentence keeps its articles. */
 function sentenceTokens(text: string): string[] {
-  return expandContractions(text.toLocaleLowerCase())
+  const tokens = expandContractions(text.toLocaleLowerCase().replace(/(\d),(?=\d{3}\b)/g, '$1'))
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
+  return canonicalizeNumbers(tokens);
 }
 
 /** Every reading of an answer with each parenthetical either said or left out, e.g. "you (formal) think". */
@@ -94,18 +104,14 @@ function reading(tokens: string[]): Reading {
   return pronoun ? { pronoun, rest: tokens.slice(1), length: tokens.length } : { pronoun: null, rest: tokens, length: tokens.length };
 }
 
-/** True when the two word lists differ by at most one inserted, deleted or substituted word. */
-function withinOneWord(a: string[], b: string[]): boolean {
-  if (Math.abs(a.length - b.length) > 1) return false;
+/** True when one list is the other plus a single small function word, e.g. "con la abuela" and "con abuela". */
+function differsByFunctionWord(a: string[], b: string[]): boolean {
+  const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+  if (longer.length - shorter.length !== 1) return false;
   let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA -= 1; endB -= 1; }
-  return Math.max(endA - start, endB - start) <= 1;
+  while (start < shorter.length && shorter[start] === longer[start]) start += 1;
+  return FUNCTION_WORDS.has(longer[start]) && shorter.slice(start).every((word, offset) => word === longer[start + 1 + offset]);
 }
-
-const negations = (words: string[]) => words.filter((word) => NEGATIONS.has(word)).length;
 
 function sentenceAlternatives(expected: string): Reading[] {
   return expected
@@ -121,22 +127,24 @@ function isCorrectSentence(spoken: string, expected: string): boolean {
   return sentenceAlternatives(expected).some((alternative) => {
     if (actual.pronoun && alternative.pronoun && actual.pronoun !== alternative.pronoun) return false;
     const exact = actual.rest.length === alternative.rest.length && actual.rest.every((word, index) => word === alternative.rest[index]);
-    return exact || (alternative.length >= TOLERANCE_MIN_WORDS
-      && negations(actual.rest) === negations(alternative.rest)
-      && withinOneWord(actual.rest, alternative.rest));
+    return exact || (alternative.length >= TOLERANCE_MIN_WORDS && differsByFunctionWord(actual.rest, alternative.rest));
   });
 }
 
 /**
  * Whether a spoken answer matches the expected one. Words take any of several alternatives. Sentences and
  * conjugations are matched on whole phrases, so commas and "or" stay part of the answer, and they forgive
- * a spoken or missing subject pronoun, English contractions, parentheticals and (in long sentences) one slip.
+ * a spoken or missing subject pronoun, English contractions, parentheticals, digits for number words, and
+ * (in long sentences) a missing or extra article. Words also accept a number said as digits or words.
  */
 export function isCorrectAnswer(spoken: string, expected: string, kind: WordKind = 'word'): boolean {
   if (kind !== 'word') return isCorrectSentence(spoken, expected);
   const actual = normalizeAnswer(spoken);
   if (!actual) return false;
-  return answerAlternatives(expected).some((alternative) => alternative === actual);
+  const alternatives = answerAlternatives(expected);
+  if (alternatives.some((alternative) => alternative === actual)) return true;
+  const said = numberValue(actual);
+  return said !== null && alternatives.some((alternative) => numberValue(alternative) === said);
 }
 
 /** Whether recognition returned anything to judge: blank or whitespace-only results are silence, not a wrong answer. */

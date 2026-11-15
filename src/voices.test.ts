@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseVoice, recognitionLanguage, speechLanguage } from './voices';
+import { chooseVoice, pickSpanishRecognitionLanguage, RecognitionLanguages, recognitionLanguage, speechLanguage } from './voices';
 
 const voice = (lang: string, name = lang) => ({ lang, name });
 
@@ -60,5 +60,59 @@ describe('recognitionLanguage', () => {
     const fallback = recognitionLanguage('es', true);
     expect(fallback).toBe('es-ES');
     expect(recognitionLanguage('en', true)).toBe('en-US');
+  });
+});
+
+describe('pickSpanishRecognitionLanguage', () => {
+  it('prefers Argentine, then Spain, then Mexican, then any Spanish', () => {
+    expect(pickSpanishRecognitionLanguage(['en-US', 'es-ES', 'es-MX', 'es-AR'])).toBe('es-AR');
+    expect(pickSpanishRecognitionLanguage(['en-US', 'es-MX', 'es-ES'])).toBe('es-ES');
+    expect(pickSpanishRecognitionLanguage(['en-US', 'es-MX'])).toBe('es-MX');
+    expect(pickSpanishRecognitionLanguage(['en-US', 'es-CO'])).toBe('es-CO');
+  });
+
+  it('returns the device\'s own spelling of the tag', () => {
+    expect(pickSpanishRecognitionLanguage(['en_US', 'es_AR'])).toBe('es_AR');
+    expect(pickSpanishRecognitionLanguage(['ES-ar'])).toBe('ES-ar');
+  });
+
+  it('is null when no Spanish is offered or the list is unusable', () => {
+    expect(pickSpanishRecognitionLanguage(['en-US', 'fr-FR'])).toBeNull();
+    expect(pickSpanishRecognitionLanguage([])).toBeNull();
+    expect(pickSpanishRecognitionLanguage(undefined)).toBeNull();
+    expect(pickSpanishRecognitionLanguage([42, null, 'es-AR'])).toBe('es-AR');
+  });
+});
+
+describe('RecognitionLanguages', () => {
+  it('asks for Argentine Spanish and US English by default', () => {
+    const languages = new RecognitionLanguages();
+    expect(languages.languageFor('es')).toBe('es-AR');
+    expect(languages.languageFor('en')).toBe('en-US');
+  });
+
+  it('falls back to es-ES once, and only for Spanish', () => {
+    const languages = new RecognitionLanguages();
+    expect(languages.unsupported('en')).toBe(false);
+    expect(languages.languageFor('es')).toBe('es-AR');
+    expect(languages.unsupported('es')).toBe(true);
+    expect(languages.languageFor('es')).toBe('es-ES');
+    expect(languages.languageFor('en')).toBe('en-US');
+    expect(languages.unsupported('es')).toBe(false); // already fallen back: do not loop
+  });
+
+  it('uses the language the device reports once it is known', () => {
+    const languages = new RecognitionLanguages();
+    languages.setDeviceLanguages(['en-US', 'es-MX']);
+    expect(languages.languageFor('es')).toBe('es-MX');
+    expect(languages.languageFor('en')).toBe('en-US');
+  });
+
+  it('keeps the default when the device list has no Spanish or is unavailable', () => {
+    const languages = new RecognitionLanguages();
+    languages.setDeviceLanguages(['en-US']);
+    expect(languages.languageFor('es')).toBe('es-AR');
+    languages.setDeviceLanguages(undefined);
+    expect(languages.languageFor('es')).toBe('es-AR');
   });
 });

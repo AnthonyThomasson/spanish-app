@@ -189,41 +189,75 @@ describe('sentence matching: parentheticals', () => {
 });
 
 describe('sentence matching: long-sentence tolerance', () => {
-  const six = 'we eat dinner with my grandmother';
-  const spanish = 'nosotros cenamos con mi abuela los domingos';
+  const english = 'we eat dinner with the grandmother every night';
+  const spanish = 'nosotros cenamos con la abuela todos los domingos';
 
-  it('accepts one wrong, missing or extra word in a sentence of six or more words', () => {
-    expect(isCorrectAnswer('we eat lunch with my grandmother', six, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('we eat dinner with grandmother', six, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('we eat dinner with my dear grandmother', six, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('cenamos con mi abuela los sabados', spanish, 'sentence')).toBe(true);
+  it('forgives a missing or extra small function word in a sentence of six or more words', () => {
+    expect(isCorrectAnswer('we eat dinner with grandmother every night', english, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('we eat dinner with the the grandmother every night', english, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('we eat dinner with the grandmother every night to', english, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con abuela todos los domingos', spanish, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con la abuela todos domingos', spanish, 'sentence')).toBe(true);
   });
 
-  it('rejects two differing words', () => {
-    expect(isCorrectAnswer('we eat lunch with my sister', six, 'sentence')).toBe(false);
-    expect(isCorrectAnswer('we eat dinner with', six, 'sentence')).toBe(false);
+  it('forgives an extra function word the expected answer lacks, but not an extra content word', () => {
+    expect(isCorrectAnswer('we eat dinner with the grandmother every single night', 'we eat dinner with the grandmother every night', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with a grandmother every night', 'we eat dinner with grandmother every night', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('I think that we eat dinner at home now', 'I think we eat dinner at home now', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('pienso que comemos juntos en casa hoy', 'pienso comemos juntos en casa hoy', 'sentence')).toBe(true);
+  });
+
+  it('never forgives a different word, even a close one', () => {
+    expect(isCorrectAnswer('we eat lunch with the grandmother every night', english, 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with the grandfather every night', english, 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with the grandmother every day', english, 'sentence')).toBe(false);
+  });
+
+  it.each([
+    ['we have lunch at noon every day today', 'I have lunch at noon every day today', 'wrong person'],
+    ['I have lunch at noon every day today', 'we have lunch at noon every day today', 'wrong person'],
+    ['como pan con queso todos los dias', 'comes pan con queso todos los dias', 'wrong verb form'],
+    ['yesterday he went to the market with his friend', 'yesterday he goes to the market with his friend', 'wrong tense'],
+    ['they went to the market early every morning', 'they go to the market early every morning', 'wrong tense'],
+    ['she has three brothers and one sister now', 'she has four brothers and one sister now', 'wrong number'],
+    ['she has 3 brothers and one sister now', 'she has 4 brothers and one sister now', 'wrong digit'],
+    ['I called her after the meeting this morning', 'I called him after the meeting this morning', 'wrong pronoun'],
+    ['we went there with the whole family today', 'we went there without the whole family today', 'wrong meaning word'],
+    ['tengo un amigo muy simpatico en mi clase', 'tengo un amiga muy simpatico en mi clase', 'wrong gender'],
+    ['la amiga de mi hermana vive en la ciudad', 'la amigo de mi hermana vive en la ciudad', 'wrong gender'],
+    ['I do not want to go to the party tonight', 'I do want to go to the party tonight', 'negation'],
+    ['I do want to go to the party tonight', 'I do not want to go to the party tonight', 'negation'],
+    ['ellos no quieren ir a la fiesta de hoy', 'ellos quieren ir a la fiesta de hoy', 'negation'],
+  ])('rejects %s for %s (%s)', (spoken, expected) => {
+    expect(isCorrectAnswer(spoken, expected, 'sentence')).toBe(false);
+  });
+
+  it('rejects the same slips on conjugation cards', () => {
+    expect(isCorrectAnswer('vos pensas en la casa de tus abuelos hoy', 'vos pensas en la casa de mis abuelos hoy', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('ellos piensan en la casa de sus abuelos hoy', 'ellas piensan en la casa de sus abuelos hoy', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('we think about the house of our grandparents today', 'I think about the house of our grandparents today', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('you think about the house of our grandparents today', 'you thought about the house of our grandparents today', 'conjugation')).toBe(false);
+  });
+
+  it('forgives a function word on conjugation cards too', () => {
+    expect(isCorrectAnswer('vos pensas en la casa de tus abuelos hoy', 'vos pensas en casa de tus abuelos hoy', 'conjugation')).toBe(true);
   });
 
   it('is exact for sentences under six words', () => {
-    expect(isCorrectAnswer('we eat lunch with grandmother', 'we eat dinner with grandmother', 'sentence')).toBe(false);
-    expect(isCorrectAnswer('she reads a book now', 'she reads a book here', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat with grandmother', 'we eat with the grandmother', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('she reads a book now', 'she reads the book now', 'sentence')).toBe(false);
   });
 
   it('combines with the optional pronoun', () => {
-    expect(isCorrectAnswer('cenamos con mi abuela los sabados', 'nosotros cenamos con mi abuela los domingos', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con abuela todos los domingos', spanish, 'sentence')).toBe(true);
   });
 
   it('applies to whichever alternative is closest', () => {
     const expected = 'they walk to school every morning / they go to school on foot every morning';
-    expect(isCorrectAnswer('they walk to school every day', expected, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('they go to school on foot every day', expected, 'sentence')).toBe(true);
-  });
-
-  it('never forgives adding or dropping a negation', () => {
-    expect(isCorrectAnswer('I do want to go to the party tonight', 'I do not want to go to the party tonight', 'sentence')).toBe(false);
-    expect(isCorrectAnswer('I do not want to go to the party tonight', 'I do want to go to the party tonight', 'sentence')).toBe(false);
-    expect(isCorrectAnswer('ellos no quieren ir a la fiesta de hoy', 'ellos quieren ir a la fiesta de hoy', 'sentence')).toBe(false);
-    expect(isCorrectAnswer('I do not want to go to the party today', 'I do not want to go to the party tonight', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('they walk every morning', expected, 'sentence')).toBe(false);
+    expect(isCorrectAnswer('they walk school every morning', expected, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('they walk to the school every morning', expected, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('they go to the school on foot every morning', expected, 'sentence')).toBe(true);
   });
 
   it('keeps a slash inside parentheses part of the parenthetical', () => {
@@ -232,7 +266,98 @@ describe('sentence matching: long-sentence tolerance', () => {
   });
 
   it('never applies to word cards', () => {
-    expect(isCorrectAnswer('we eat lunch with my grandmother', six, 'word')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with grandmother every night', english, 'word')).toBe(false);
+  });
+});
+
+describe('sentence matching: more contractions', () => {
+  it.each([
+    ["what's your name", 'what is your name'],
+    ["that's my house", 'that is my house'],
+    ["there's a book here", 'there is a book here'],
+    ["where's the station", 'where is the station'],
+    ["who's at the door", 'who is at the door'],
+    ["here's the key", 'here is the key'],
+    ["let's go home", 'let us go home'],
+    ["how's your mother", 'how is your mother'],
+    ["I'd like some water", 'I would like some water'],
+    ["she'd love a coffee", 'she would love a coffee'],
+    ["we'd prefer tea", 'we would prefer tea'],
+    ["they haven't eaten", 'they have not eaten'],
+    ["he wouldn't go", 'he would not go'],
+  ])('treats %s and %s as equal', (a, b) => {
+    expect(isCorrectAnswer(a, b, 'sentence')).toBe(true);
+    expect(isCorrectAnswer(b, a, 'sentence')).toBe(true);
+  });
+
+  it('does not guess at the ambiguous \'d', () => {
+    expect(isCorrectAnswer("I'd gone home", 'I would gone home', 'sentence')).toBe(false);
+    expect(isCorrectAnswer("I'd gone home", 'I had gone home', 'sentence')).toBe(false);
+  });
+});
+
+describe('sentence matching: numbers', () => {
+  it('matches digits against number words', () => {
+    expect(isCorrectAnswer('I have 2 brothers', 'I have two brothers', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('I have two brothers', 'I have 2 brothers', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('tengo 3 hermanas', 'tengo tres hermanas', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('she is 21 years old', 'she is twenty-one years old', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('hay 35 alumnos', 'hay treinta y cinco alumnos', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('it costs 1,200 pesos', 'it costs one thousand two hundred pesos', 'sentence')).toBe(true);
+  });
+
+  it('does not match different numbers', () => {
+    expect(isCorrectAnswer('I have 3 brothers', 'I have two brothers', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('she is 22 years old', 'she is twenty-one years old', 'sentence')).toBe(false);
+  });
+
+  it('works on conjugation cards too', () => {
+    expect(isCorrectAnswer('we have 2', 'we have two', 'conjugation')).toBe(true);
+  });
+});
+
+describe('sentence matching: you all', () => {
+  it('accepts "you guys" and "y\'all" for "you all"', () => {
+    expect(isCorrectAnswer('you guys think', 'you all think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer("y'all think", 'you all think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('yall think', 'you all think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('Y’all think', 'you all think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('you all think', 'you guys think', 'conjugation')).toBe(true);
+  });
+
+  it('still tells you all from the singular and the formal', () => {
+    expect(isCorrectAnswer('you think', 'you all think', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('you all think', 'you (formal) think', 'conjugation')).toBe(false);
+  });
+});
+
+describe('word matching: numbers', () => {
+  it('accepts digits for a number word and number words for digits', () => {
+    expect(isCorrectAnswer('2', 'two')).toBe(true);
+    expect(isCorrectAnswer('4', 'cuatro')).toBe(true);
+    expect(isCorrectAnswer('cuatro', '4')).toBe(true);
+    expect(isCorrectAnswer('forty two', '42')).toBe(true);
+    expect(isCorrectAnswer('42', 'forty-two')).toBe(true);
+    expect(isCorrectAnswer('21', 'veintiuno')).toBe(true);
+    expect(isCorrectAnswer('100', 'one hundred')).toBe(true);
+    expect(isCorrectAnswer('2', 'two (2)')).toBe(true);
+  });
+
+  it('rejects a different number', () => {
+    expect(isCorrectAnswer('3', 'two')).toBe(false);
+    expect(isCorrectAnswer('tres', 'cuatro')).toBe(false);
+    expect(isCorrectAnswer('4', 'forty')).toBe(false);
+  });
+
+  it('does not turn other words into numbers', () => {
+    expect(isCorrectAnswer('2', 'cat')).toBe(false);
+    expect(isCorrectAnswer('two', 'second')).toBe(false);
+    expect(isCorrectAnswer('2', 'two cats')).toBe(false);
+  });
+
+  it('still takes a number word among other alternatives', () => {
+    expect(isCorrectAnswer('1', 'one, a single')).toBe(true);
+    expect(isCorrectAnswer('single', 'one, a single')).toBe(true);
   });
 });
 

@@ -273,6 +273,19 @@ describe('Both direction', () => {
     expect(progress.cardCount([chapter1, chapter2], 'both', true)).toBe(3);
   });
 
+  it.each(['es-en', 'en-es', 'both'] as const)('keeps a chapter label and the selection summary consistent in %s', (direction) => {
+    // The label shows "<words> cards · <hidden> hidden"; the summary counts the cards that will be asked.
+    const { progress } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    progress.knowIt(1, perro, 'es-en');
+    progress.knowIt(1, perro, 'en-es');
+    const chapters = [chapter1, chapter2];
+    const labelled = chapters.reduce((sum, chapter) => sum + chapter.words.length, 0);
+    const hidden = chapters.reduce((sum, chapter) => sum + progress.hiddenCount(chapter, direction), 0);
+    expect(progress.cardCount(chapters, direction, true)).toBe(labelled);
+    expect(progress.cardCount(chapters, direction, false)).toBe(labelled - hidden);
+  });
+
   it('reports the earliest date at which any direction of any selected word comes back', () => {
     const { progress, clock } = setup();
     progress.knowIt(1, gato, 'es-en');
