@@ -34,6 +34,10 @@ test('pickLanAddress skips link-local addresses and handles numeric family', () 
   assert.equal(ip, '192.168.8.8')
 })
 
+test('pickLanAddress ignores VPN tunnels and VM bridges', () => {
+  assert.equal(pickLanAddress({ utun3: [iface('10.8.0.2')], bridge100: [iface('192.168.64.1')] }), undefined)
+})
+
 test('pickLanAddress returns undefined when there is no LAN address', () => {
   assert.equal(pickLanAddress({ lo0: [iface('127.0.0.1', { internal: true })] }), undefined)
   assert.equal(pickLanAddress({}), undefined)

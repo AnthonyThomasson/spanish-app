@@ -8,13 +8,14 @@ const isIPv4 = (entry) => entry.family === 'IPv4' || entry.family === 4
 const isLinkLocal = (address) => address.startsWith('169.254.')
 
 // Choose the Mac's Wi-Fi/LAN IPv4 from os.networkInterfaces() output: prefer en0,
-// otherwise the first non-internal, non-link-local IPv4 address.
+// otherwise the first other en* (Ethernet/Wi-Fi) interface. VPN tunnels and VM bridges
+// (utun*, bridge*, docker...) are never chosen: the phone could not reach them.
 export function pickLanAddress(interfaces) {
   const usable = (name) =>
     (interfaces[name] ?? []).find((e) => isIPv4(e) && !e.internal && !isLinkLocal(e.address))
   const preferred = usable('en0')
   if (preferred) return preferred.address
-  for (const name of Object.keys(interfaces)) {
+  for (const name of Object.keys(interfaces).filter((n) => /^en\d+$/.test(n))) {
     const found = usable(name)
     if (found) return found.address
   }

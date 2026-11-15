@@ -2,11 +2,10 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
-import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { pipeline } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import QRCode from 'qrcode'
 import {
   APK_NAME,
   DEFAULT_PORT,
@@ -61,45 +60,66 @@ if (!fs.existsSync(vocab)) {
 // (c) build
 if (!run('npm', ['run', 'android:apk'])) fail('npm run android:apk failed')
 
+// qrcode is a devDependency, so it can only be loaded once step (a) has installed it.
+const { default: QRCode } = await import('qrcode')
+
 // (d) LAN address
 const ip = pickLanAddress(os.networkInterfaces())
 if (!ip) fail('could not find a Wi-Fi/LAN IPv4 address. Connect the Mac to the same network as the phone.')
 
-// (e) serve release/ over HTTP
+// (e) serve release/ over HTTP (only the APK and QR image, nothing else in the folder)
 const releaseDir = path.join(root, 'release')
+const servable = new Set([APK_NAME, 'qr.png'])
 const server = http.createServer((req, res) => {
-  const requested = decodeURIComponent(new URL(req.url, 'http://x').pathname)
-  const file = path.resolve(releaseDir, '.' + path.posix.normalize('/' + requested))
-  if (!file.startsWith(releaseDir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+  let name
+  try {
+    name = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\//, '')
+  } catch {
+    res.writeHead(400).end('Bad request')
+    return
+  }
+  const file = path.join(releaseDir, name)
+  let size
+  try {
+    size = servable.has(name) ? fs.statSync(file).size : undefined
+  } catch {
+    size = undefined
+  }
+  if (size === undefined) {
     res.writeHead(404).end('Not found')
     return
   }
-  res.writeHead(200, { 'Content-Type': contentTypeFor(file), 'Content-Length': fs.statSync(file).size })
-  fs.createReadStream(file).pipe(res)
+  res.writeHead(200, { 'Content-Type': contentTypeFor(file), 'Content-Length': size })
+  pipeline(fs.createReadStream(file), res, () => {})
 })
 
-const isFree = (port) =>
-  new Promise((resolve) => {
-    const probe = net.createServer()
-    probe.once('error', () => resolve(false))
-    probe.listen(port, '0.0.0.0', () => probe.close(() => resolve(true)))
+// Bind for real on each candidate port, so a port taken by another worktree (even a
+// moment ago) just moves us on to the next one.
+const tryListen = (port) =>
+  new Promise((resolve, reject) => {
+    const onError = (err) => (err.code === 'EADDRINUSE' ? resolve(false) : reject(err))
+    server.once('error', onError)
+    server.listen(port, '0.0.0.0', () => {
+      server.off('error', onError)
+      resolve(true)
+    })
   })
-const port = await findFreePort(DEFAULT_PORT, isFree)
-await new Promise((resolve, reject) => {
-  server.once('error', reject)
-  server.listen(port, '0.0.0.0', resolve)
-})
+const port = await findFreePort(DEFAULT_PORT, tryListen)
 
 // (f) URL + QR
 const url = buildApkUrl(ip, port)
 await QRCode.toFile(path.join(releaseDir, 'qr.png'), url, { width: 512 })
-console.log(`\nScan to install on the phone (same Wi-Fi):\n`)
+console.log(`\nScan to install on the phone (same Wi-Fi as ${ip}):\n`)
 console.log(await QRCode.toString(url, { type: 'terminal', small: true }))
 console.log(`${url}\n`)
 console.log('QR image: release/qr.png')
 console.log('Serving release/ — press Ctrl+C to stop.')
 
 // (g) serve until Ctrl+C
-const stop = () => server.close(() => process.exit(0))
+const stop = () => {
+  server.closeAllConnections()
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(0), 1000).unref()
+}
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
