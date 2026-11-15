@@ -1,6 +1,6 @@
 import './style.css';
 import { isCorrectAnswer } from './matching';
-import { recognitionConstructor, Speaker, type SpeechRecognitionLike } from './speech';
+import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Chapter, Direction, Mode, Vocabulary, Word } from './types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -184,9 +184,11 @@ function updateSupportNote(): void {
   const note = element('recognition-note');
   note.hidden = !answerSelected;
   if (answerSelected) {
-    note.textContent = recognitionConstructor()
-      ? 'Your browser supports speech recognition. You’ll be asked for microphone access when a card begins.'
-      : 'Speech recognition isn’t supported in this browser. Use Chrome or Safari for Speak answers mode, or choose another mode.';
+    note.textContent = usingNativeSpeech()
+      ? 'Native Android speech recognition is enabled. You’ll be asked for microphone access when a card begins.'
+      : recognitionConstructor()
+        ? 'Your browser supports speech recognition. You’ll be asked for microphone access when a card begins.'
+        : 'Speech recognition isn’t supported in this browser. Use Chrome or Safari for Speak answers mode, or choose another mode.';
   }
 }
 

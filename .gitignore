@@ -21,3 +21,6 @@ __pycache__/
 data/vocab.json
 extraction/
 *.pdf
+
+# Local Android APK and download server output (contains book data)
+release/
