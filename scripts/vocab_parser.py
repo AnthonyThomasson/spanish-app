@@ -192,6 +192,7 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
     from argentine import argentinize
     from card_parsers import PARSERS
     from second_person import Lexicon, convert_sentence, convert_word_card
+    from sentence_disambiguation import disambiguate_sentences
 
     images = json.loads(ocr_path.read_text())
     starts = sorted(chapter_starts.items())
@@ -263,6 +264,10 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
         chapters[chapter_number - 1]["words"].append(
             card_entry(Card(mapped, card.english, card.kind, tense=card.tense), page)
         )
+
+    # Pass 3: sentence cards that share an English prompt within a chapter get a short optional tag.
+    for chapter in chapters:
+        chapter["words"] = disambiguate_sentences(chapter["words"], report)
 
     stats["cards"] = dict(Counter(word.get("kind", WORD) for chapter in chapters for word in chapter["words"]))
     stats["cardsByChapter"] = {

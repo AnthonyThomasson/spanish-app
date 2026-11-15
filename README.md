@@ -20,7 +20,7 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 
    The script uses `pypdf` to extract the embedded table images and macOS Vision to OCR them. It writes `data/vocab.json`; OCR intermediates go in `extraction/`. Both paths are ignored by Git. Use `--refresh-ocr` to run recognition again instead of using the cached OCR output.
 
-   Besides the word tables, the extractor emits example sentences (`kind: "sentence"`), `vos` commands, number words, interrogatives and section lists. The deck is Argentine: second-person (`tú`/`vosotros`) sentences are converted to `vos`/`ustedes` when the form is certain and dropped otherwise, and a curated word map (coche → auto, zumo → jugo…) is applied to the Spanish side. Each card type lives in its own module and is registered in `scripts/card_parsers.py`.
+   Besides the word tables, the extractor emits example sentences (`kind: "sentence"`), `vos` commands, number words, interrogatives and section lists. The deck is Argentine: second-person (`tú`/`vosotros`) sentences are converted to `vos`/`ustedes` when the form is certain and dropped otherwise, and a curated word map (coche → auto, zumo → jugo…) is applied to the Spanish side. Sentences that would share an English prompt within a chapter get a short optional tag so the prompt is unambiguous (`Drink (vos).`, `Drink (Ud.).`, `I want to help them (m.).`, `I wanted to go (preterit).`); the tag is not spoken and not needed in the answer (`scripts/sentence_disambiguation.py`). Each card type lives in its own module and is registered in `scripts/card_parsers.py`.
 
    Python tests for the extractor use invented text and synthetic OCR only; run them with `python3 -m unittest discover -s scripts -p "test_*.py"` (or `uv run --with pytest pytest scripts`).
 
@@ -48,7 +48,7 @@ Progress is saved locally (`localStorage`, also in the Android app) per word and
 - Deck setup shows each chapter's hidden count (for the chosen direction) and counts only the cards that will be asked. **Include hidden words** adds them back for review: a correct answer doesn't extend the hide, and a miss un-hides the word. With **Both**, each card's direction is picked from the directions that aren't hidden, and a word hidden in both directions is left out (hidden count and summary follow). If every selected word is hidden, Start tells you when they return and offers to include them.
 - **Reset progress** on a chapter clears its streaks and hidden dates in both directions. Changing the settings applies from then on; words already hidden keep their date.
 
-Spanish prompts use an `es-ES`/`es-MX` voice when available; English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
+Spanish prompts use an `es-AR` voice when available, then `es-MX` or `es-ES` (`src/voices.ts`); English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. It asks for `es-AR` and falls back to `es-ES` if the recognizer refuses it; on Android it also checks the device's supported languages (`getSupportedLanguages`). Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
 
 ### Use an Android phone
 

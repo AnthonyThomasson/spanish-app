@@ -76,6 +76,7 @@ SPANISH_OCR_CORRECTIONS = {
     "chóteres": "chóferes",
     "apartmento": "apartamento",
     "ahore": "ahora",
+    "a tempo": "a tiempo",
 }
 AMBIGUOUS_CORRECTIONS = {"imposible"}
 # Kept for callers that import the old name: the corrections that are safe on any text.

@@ -190,6 +190,20 @@ describe('sentence matching: English contractions', () => {
   });
 });
 
+describe('sentence matching: disambiguation tags', () => {
+  it('accepts a tagged English answer with or without the tag', () => {
+    expect(isCorrectAnswer('drink', 'Drink (vos).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('drink vos', 'Drink (vos).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('where are you from', 'Where are you from (Ud.)?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('i want to help them', 'I want to help them (m.).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('it was good', 'It was good (Sp. fue buena).', 'sentence')).toBe(true);
+  });
+
+  it('still rejects a different sentence', () => {
+    expect(isCorrectAnswer('eat', 'Drink (vos).', 'sentence')).toBe(false);
+  });
+});
+
 describe('sentence matching: parentheticals', () => {
   it('treats a trailing or inner parenthetical as optional', () => {
     expect(isCorrectAnswer('you think', 'you (formal) think', 'conjugation')).toBe(true);
