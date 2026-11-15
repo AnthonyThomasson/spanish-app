@@ -1,0 +1,180 @@
+package com.anthonythomasson.paso;
+
+import android.Manifest;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.webkit.WebView;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+/**
+ * JS-facing side of the background session: start/update/stop the foreground service and forward
+ * notification-button / audio-focus actions back to JS as "action" events.
+ *
+ * While a session is active it also keeps the WebView running with the activity in the background
+ * or the screen off (see {@link #keepWebViewRunning()}).
+ */
+@CapacitorPlugin(
+    name = "BackgroundSession",
+    permissions = { @Permission(alias = BackgroundSessionPlugin.NOTIFICATIONS, strings = { Manifest.permission.POST_NOTIFICATIONS }) }
+)
+public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Listener {
+
+    static final String NOTIFICATIONS = "notifications";
+    private static final long[] REASSERT_DELAYS_MS = { 0L, 250L, 1000L };
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private boolean webViewPrioritySaved;
+    private int savedRendererPriority;
+    private boolean savedRendererWaived;
+
+    @Override
+    public void load() {
+        SessionEvents.setListener(this);
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        SessionEvents.clearListener(this);
+        mainHandler.removeCallbacksAndMessages(null);
+        super.handleOnDestroy();
+    }
+
+    @Override
+    public void onAction(SessionAction action) {
+        if (action == SessionAction.STOP) {
+            restoreWebViewPriority();
+        }
+        JSObject event = new JSObject();
+        event.put("action", action.wireName());
+        notifyListeners("action", event);
+    }
+
+    @PluginMethod
+    public void start(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33 && getPermissionState(NOTIFICATIONS) != PermissionState.GRANTED) {
+            // Ask first, but start the service whatever the answer: it still keeps the session alive.
+            requestPermissionForAlias(NOTIFICATIONS, call, "onNotificationPermissionResult");
+            return;
+        }
+        startService(call);
+    }
+
+    @PermissionCallback
+    private void onNotificationPermissionResult(PluginCall call) {
+        startService(call);
+    }
+
+    private void startService(PluginCall call) {
+        SessionState state = new SessionState(
+            call.getString("title"),
+            call.getString("text"),
+            Boolean.TRUE.equals(call.getBoolean("paused", false)),
+            call.getString("mode")
+        );
+        try {
+            BackgroundSessionService.start(getContext(), state);
+        } catch (RuntimeException e) {
+            BackgroundSessionService.markInactive();
+            call.reject("Could not start the background session: " + e.getMessage());
+            return;
+        }
+        keepWebViewRunning();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void update(PluginCall call) {
+        SessionState state = new SessionState(
+            call.getString("title"),
+            call.getString("text"),
+            Boolean.TRUE.equals(call.getBoolean("paused", false)),
+            null
+        );
+        try {
+            BackgroundSessionService.update(getContext(), state);
+        } catch (RuntimeException e) {
+            call.reject("Could not update the background session: " + e.getMessage());
+            return;
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void stop(PluginCall call) {
+        BackgroundSessionService.stop(getContext());
+        restoreWebViewPriority();
+        call.resolve();
+    }
+
+    // ---- Keeping the WebView alive while the activity is not visible -------------------------
+
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        if (BackgroundSessionService.isActive()) {
+            keepWebViewRunning();
+        }
+    }
+
+    @Override
+    protected void handleOnStop() {
+        super.handleOnStop();
+        if (BackgroundSessionService.isActive()) {
+            keepWebViewRunning();
+        }
+    }
+
+    /**
+     * Capacitor 8 itself never pauses the WebView on onPause (the "KeepRunning" preference defaults
+     * to true), but Chromium's WebView still treats a WebView whose window is no longer visible as a
+     * hidden page: timers are throttled to once per second (and far less after a few minutes) and
+     * the renderer is deprioritised. That would stall the JS-driven session loop. So while a session
+     * is active we (1) ask for an always-important renderer, (2) resume timers, and (3) re-dispatch
+     * "window visible" to the WebView after the system reports it hidden. The foreground service and
+     * its partial wake lock keep the process and CPU alive; this keeps the page itself running.
+     */
+    private void keepWebViewRunning() {
+        for (long delay : REASSERT_DELAYS_MS) {
+            mainHandler.postDelayed(this::applyKeepRunning, delay);
+        }
+    }
+
+    private void applyKeepRunning() {
+        if (!BackgroundSessionService.isActive() || getBridge() == null) {
+            return;
+        }
+        WebView webView = getBridge().getWebView();
+        if (webView == null) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !webViewPrioritySaved) {
+            savedRendererPriority = webView.getRendererRequestedPriority();
+            savedRendererWaived = webView.getRendererPriorityWaivedWhenNotVisible();
+            webViewPrioritySaved = true;
+            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+        }
+        webView.resumeTimers();
+        webView.dispatchWindowVisibilityChanged(View.VISIBLE);
+    }
+
+    private void restoreWebViewPriority() {
+        mainHandler.post(() -> {
+            if (!webViewPrioritySaved || getBridge() == null || getBridge().getWebView() == null) {
+                return;
+            }
+            webViewPrioritySaved = false;
+            if (Build.VERSION.SDK_INT >= 26) {
+                getBridge().getWebView().setRendererPriorityPolicy(savedRendererPriority, savedRendererWaived);
+            }
+        });
+    }
+}
