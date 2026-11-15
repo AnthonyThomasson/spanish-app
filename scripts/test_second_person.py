@@ -65,6 +65,12 @@ class ImperativeTests(unittest.TestCase):
         self.assertEqual(run("Come mucho.", "He eats a lot.").status, "unchanged")
         self.assertEqual(run("Se lo doy.", "I give it to him.").status, "unchanged")
 
+    def test_command_with_unknown_verb_and_pronoun_is_dropped(self):
+        self.assertEqual(run("Cuéntame la historia.", "Tell me the story.").status, "dropped")
+
+    def test_nosotros_commands_are_not_mistaken_for_tu_commands(self):
+        self.assertEqual(run("Comprémoselo.", "Let's buy it for her.").status, "unchanged")
+
     def test_formal_commands_are_untouched(self):
         self.assertEqual(run("Escriba la carta.", "Write the letter.").status, "unchanged")
 

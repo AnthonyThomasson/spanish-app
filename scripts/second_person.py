@@ -32,6 +32,7 @@ CORE_VERBS = {
 }
 
 WORD = r"[A-Za-zÁÉÍÓÚÑÜáéíóúñü]+"
+UNKNOWN_ATTACHED_IMPERATIVE = re.compile(r"^[a-z]{2,}[ae](?:me|te|lo|la|le|nos|los|las|les){1,2}$")
 DETERMINERS_BEFORE_NOUN = {
     "el", "la", "los", "las", "un", "una", "unos", "unas", "mis", "tus", "sus", "mi", "tu", "su", "de", "del",
     "al", "en", "con", "por", "para", "sin", "muchas", "muchos", "otras", "otros", "estas", "estos", "esas", "esos",
@@ -208,6 +209,14 @@ def convert_tu_imperative(spanish: str, english: str, lexicon: Lexicon, index: d
                 continue
             candidates.append((infinitive, clitics))
     if not candidates:
+        # An imperative with attached pronouns whose verb we do not know ("Lávate", "Háblame") could be
+        # tú or Ud.; we cannot tell, so it is dropped instead of kept in a form the deck should not teach.
+        stripped = strip_accents(token.lower())
+        if (
+            token.lower() != stripped and UNKNOWN_ATTACHED_IMPERATIVE.match(stripped)
+            and not stripped.endswith(("ese", "ense")) and "mos" not in stripped and english_first not in NON_IMPERATIVE_STARTS and english_first
+        ):
+            return Outcome("dropped", spanish, "unverified_imperative")
         return None
     imperative_start = english_first not in NON_IMPERATIVE_STARTS and english_first != ""
     unambiguous = token.lower() in {"di", "haz", "pon", "sal", "sé", "ten", "ven"} and imperative_start
