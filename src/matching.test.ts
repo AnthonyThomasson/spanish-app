@@ -117,6 +117,15 @@ describe('sentence matching: Spanish subject pronouns', () => {
     expect(isCorrectAnswer('nosotras vivimos', 'nosotros vivimos', 'conjugation')).toBe(true);
   });
 
+  it('only drops "él" as a pronoun when it is accented; an unaccented "el" is the article', () => {
+    expect(isCorrectAnswer('duerme', 'él duerme', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('él duerme', 'duerme', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('el duerme', 'duerme', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('libro rojo', 'el libro rojo', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('el libro rojo', 'libro rojo', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('el libro rojo', 'el libro rojo', 'sentence')).toBe(true);
+  });
+
   it('does not strip a lone pronoun', () => {
     expect(isCorrectAnswer('ella', 'ella', 'sentence')).toBe(true);
     expect(isCorrectAnswer('', 'ella', 'sentence')).toBe(false);
@@ -190,14 +199,15 @@ describe('sentence matching: parentheticals', () => {
 
 describe('sentence matching: long-sentence tolerance', () => {
   const english = 'we eat dinner with the grandmother every night';
-  const spanish = 'nosotros cenamos con la abuela todos los domingos';
+  const spanish = 'cenamos con mi abuela que vive en una casa vieja';
 
   it('forgives a missing or extra small function word in a sentence of six or more words', () => {
     expect(isCorrectAnswer('we eat dinner with grandmother every night', english, 'sentence')).toBe(true);
     expect(isCorrectAnswer('we eat dinner with the the grandmother every night', english, 'sentence')).toBe(true);
     expect(isCorrectAnswer('we eat dinner with the grandmother every night to', english, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('cenamos con abuela todos los domingos', spanish, 'sentence')).toBe(true);
-    expect(isCorrectAnswer('cenamos con la abuela todos domingos', spanish, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con mi abuela vive en una casa vieja', spanish, 'sentence')).toBe(true); // que
+    expect(isCorrectAnswer('cenamos con mi abuela que vive en casa vieja', spanish, 'sentence')).toBe(true); // una
+    expect(isCorrectAnswer('cenamos con mi abuela que vive en una casa de vieja', spanish, 'sentence')).toBe(true); // de added
   });
 
   it('forgives an extra function word the expected answer lacks, but not an extra content word', () => {
@@ -207,10 +217,46 @@ describe('sentence matching: long-sentence tolerance', () => {
     expect(isCorrectAnswer('pienso que comemos juntos en casa hoy', 'pienso comemos juntos en casa hoy', 'sentence')).toBe(true);
   });
 
+  it('never forgives a dropped or added first word', () => {
+    expect(isCorrectAnswer('the we eat dinner with grandmother every night', 'we eat dinner with grandmother every night', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with grandmother every night', 'the we eat dinner with grandmother every night', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('abuela que vive en una casa vieja hoy', 'una abuela que vive en una casa vieja hoy', 'sentence')).toBe(false);
+  });
+
   it('never forgives a different word, even a close one', () => {
     expect(isCorrectAnswer('we eat lunch with the grandmother every night', english, 'sentence')).toBe(false);
     expect(isCorrectAnswer('we eat dinner with the grandfather every night', english, 'sentence')).toBe(false);
     expect(isCorrectAnswer('we eat dinner with the grandmother every day', english, 'sentence')).toBe(false);
+  });
+
+  it.each([
+    // Spanish articles: a swapped or dropped definite article is a gender or meaning error.
+    ['el casa es grande y muy bonita hoy', 'la casa es grande y muy bonita hoy'],
+    ['ella casa es grande y muy bonita hoy', 'la casa es grande y muy bonita hoy'],
+    ['la libro es grande y muy bonito hoy', 'el libro es grande y muy bonito hoy'],
+    ['la libro es grande y muy bonito hoy', 'él libro es grande y muy bonito hoy'],
+    ['casa es grande y muy bonita hoy', 'la casa es grande y muy bonita hoy'],
+    ['la casa es grande y muy bonita hoy', 'casa es grande y muy bonita hoy'],
+    ['los libros son grandes y muy bonitos hoy', 'las libros son grandes y muy bonitos hoy'],
+    ['voy a ver los libros nuevos de mi hermana hoy', 'voy a ver libros nuevos de mi hermana hoy'],
+    // Object pronouns (clitics).
+    ['yo veo la casa de mi abuela todos los dias', 'yo la veo la casa de mi abuela todos los dias'],
+    ['yo veo a mi abuela todos los dias en casa', 'yo la veo a mi abuela todos los dias en casa'],
+    ['ella ve a mi abuela todos los dias en casa', 'ella le ve a mi abuela todos los dias en casa'],
+    ['nosotros vemos a mis tios todos los dias hoy', 'nosotros los vemos a mis tios todos los dias hoy'],
+    ['yo lo veo a mi abuelo todos los dias en casa', 'yo la veo a mi abuelo todos los dias en casa'],
+    ['unos libros son grandes y muy bonitos hoy', 'libros son grandes y muy bonitos hoy'],
+    ['cenamos con mi abuela que vive en unos casa vieja', 'cenamos con mi abuela que vive en una casa vieja'],
+  ])('rejects %s for %s', (spoken, expected) => {
+    expect(isCorrectAnswer(spoken, expected, 'sentence')).toBe(false);
+    expect(isCorrectAnswer(spoken, expected, 'conjugation')).toBe(false);
+  });
+
+  it('does not let a stripped pronoun hide a different article or a dropped small word', () => {
+    expect(isCorrectAnswer('cenamos con abuela que vive en una casa vieja', 'nosotros cenamos con mi abuela que vive en una casa vieja', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('cenamos con mi abuela vive en una casa vieja', 'nosotros cenamos con mi abuela que vive en una casa vieja', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('nosotros cenamos con mi abuela que vive en una casa vieja', 'nosotros cenamos con mi abuela vive en una casa vieja', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con mi abuela que vive en una casa vieja', 'nosotros cenamos con mi abuela que vive en una casa vieja', 'sentence')).toBe(true);
   });
 
   it.each([
@@ -240,16 +286,12 @@ describe('sentence matching: long-sentence tolerance', () => {
   });
 
   it('forgives a function word on conjugation cards too', () => {
-    expect(isCorrectAnswer('vos pensas en la casa de tus abuelos hoy', 'vos pensas en casa de tus abuelos hoy', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('vos pensas en una casa de tus abuelos hoy', 'vos pensas en casa de tus abuelos hoy', 'conjugation')).toBe(true);
   });
 
   it('is exact for sentences under six words', () => {
     expect(isCorrectAnswer('we eat with grandmother', 'we eat with the grandmother', 'sentence')).toBe(false);
     expect(isCorrectAnswer('she reads a book now', 'she reads the book now', 'sentence')).toBe(false);
-  });
-
-  it('combines with the optional pronoun', () => {
-    expect(isCorrectAnswer('cenamos con abuela todos los domingos', spanish, 'sentence')).toBe(true);
   });
 
   it('applies to whichever alternative is closest', () => {
@@ -316,6 +358,19 @@ describe('sentence matching: numbers', () => {
     expect(isCorrectAnswer('she is 22 years old', 'she is twenty-one years old', 'sentence')).toBe(false);
   });
 
+  it('does not read English "once" as eleven in a sentence, but does in Spanish', () => {
+    expect(isCorrectAnswer('we go there 11 times a week', 'we go there once times a week', 'sentence', 'en')).toBe(false);
+    expect(isCorrectAnswer('we go there once a week', 'we go there once a week', 'sentence', 'en')).toBe(true);
+    expect(isCorrectAnswer('tengo 11 gatos en mi casa', 'tengo once gatos en mi casa', 'sentence', 'es')).toBe(true);
+    expect(isCorrectAnswer('tengo 11 gatos en mi casa', 'tengo once gatos en mi casa', 'sentence', 'en')).toBe(false);
+  });
+
+  it('reads "a hundred" and "a thousand" in sentences', () => {
+    expect(isCorrectAnswer('it costs 100 pesos', 'it costs a hundred pesos', 'sentence', 'en')).toBe(true);
+    expect(isCorrectAnswer('it costs a thousand pesos', 'it costs 1000 pesos', 'sentence', 'en')).toBe(true);
+    expect(isCorrectAnswer('it costs 100 pesos', 'it costs a thousand pesos', 'sentence', 'en')).toBe(false);
+  });
+
   it('works on conjugation cards too', () => {
     expect(isCorrectAnswer('we have 2', 'we have two', 'conjugation')).toBe(true);
   });
@@ -359,7 +414,23 @@ describe('word matching: numbers', () => {
     expect(isCorrectAnswer('ten', 'diez')).toBe(false);
     expect(isCorrectAnswer('one', 'uno')).toBe(false);
     expect(isCorrectAnswer('once', 'once')).toBe(true);
-    expect(isCorrectAnswer('11', 'once')).toBe(true);
+  });
+
+  it('treats "once" as eleven only for a Spanish answer', () => {
+    expect(isCorrectAnswer('11', 'once', 'word', 'es')).toBe(true);
+    expect(isCorrectAnswer('once', '11', 'word', 'es')).toBe(true);
+    expect(isCorrectAnswer('11', 'once', 'word', 'en')).toBe(false);
+    expect(isCorrectAnswer('11', 'once')).toBe(false);
+    expect(isCorrectAnswer('11', 'eleven', 'word', 'en')).toBe(true);
+    expect(isCorrectAnswer('once', 'once', 'word', 'en')).toBe(true);
+  });
+
+  it('accepts "a hundred" and "a thousand"', () => {
+    expect(isCorrectAnswer('100', 'a hundred')).toBe(true);
+    expect(isCorrectAnswer('a hundred', '100')).toBe(true);
+    expect(isCorrectAnswer('1000', 'a thousand', 'word', 'en')).toBe(true);
+    expect(isCorrectAnswer('a thousand', '1000', 'word', 'en')).toBe(true);
+    expect(isCorrectAnswer('100', 'a thousand')).toBe(false);
   });
 
   it('does not turn other words into numbers', () => {

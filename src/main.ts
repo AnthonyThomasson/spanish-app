@@ -524,7 +524,7 @@ function startListening(card: Card, token: number): void {
     }
     handled = true;
     recognitionMonitor.reset();
-    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card), card.word.kind));
+    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card), card.word.kind, answerLanguage(card)));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
     void handleSpokenAnswer(correct, card, token);
   };

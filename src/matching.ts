@@ -1,4 +1,4 @@
-import { canonicalizeNumbers, numberValue } from './numbers';
+import { canonicalizeNumbers, numberValue, type NumberLanguage } from './numbers';
 import type { WordKind } from './types';
 
 const leadingArticles = /^(?:el|la|los|las|un|una|the|a|an|to)\s+/;
@@ -38,10 +38,11 @@ const subjectPronouns: Record<string, string> = {
 
 const TOLERANCE_MIN_WORDS = 6;
 /**
- * The only words a long sentence may gain or lose: articles and linking words. Anything that carries
- * meaning (pronouns, verb forms, numbers, negations, nouns, prepositions like with/without) must match.
+ * The only words a long sentence may gain or lose, never as its first word. Spanish definite articles, object
+ * pronouns (lo, la, le...) and unos/unas are left out on purpose: swapping or dropping them changes gender,
+ * object or meaning. Pronouns, verb forms, numbers, negations and content words must always match.
  */
-const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'to', 'that', 'of', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'que']);
+const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'to', 'that', 'of', 'de', 'que', 'un', 'una']);
 const MAX_PARENTHETICALS = 4;
 
 function expandContractions(text: string): string {
@@ -64,14 +65,14 @@ function expandContractions(text: string): string {
 }
 
 /** Lowercase, accent-free words. Unlike a word card, a sentence keeps its articles. */
-function sentenceTokens(text: string): string[] {
+function sentenceTokens(text: string, language?: NumberLanguage): string[] {
   const tokens = expandContractions(text.toLocaleLowerCase().replace(/(\d),(?=\d{3}\b)/g, '$1'))
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
-  return canonicalizeNumbers(tokens);
+  return canonicalizeNumbers(tokens, language);
 }
 
 /** Every reading of an answer with each parenthetical either said or left out, e.g. "you (formal) think". */
@@ -94,40 +95,51 @@ function parentheticalVariants(text: string): string[] {
 }
 
 interface Reading {
+  /** Every token, with a leading subject pronoun folded to one spelling. */
+  tokens: string[];
   pronoun: string | null;
-  rest: string[];
-  length: number;
 }
 
-function reading(tokens: string[]): Reading {
-  const pronoun = tokens.length > 1 ? subjectPronouns[tokens[0]] : undefined;
-  return pronoun ? { pronoun, rest: tokens.slice(1), length: tokens.length } : { pronoun: null, rest: tokens, length: tokens.length };
+function reading(text: string, language?: NumberLanguage): Reading {
+  const tokens = sentenceTokens(text, language);
+  let pronoun = tokens.length > 1 ? subjectPronouns[tokens[0]] ?? null : null;
+  // An unaccented "el" is the article, not "él": only the accented form may be dropped as a pronoun.
+  if (pronoun === 'el' && !/^[^\p{L}]*él(?![\p{L}])/u.test(text.normalize('NFC').toLocaleLowerCase())) pronoun = null;
+  if (pronoun) tokens[0] = pronoun;
+  return { tokens, pronoun };
 }
 
-/** True when one list is the other plus a single small function word, e.g. "con la abuela" and "con abuela". */
+const sameWords = (a: string[], b: string[]) => a.length === b.length && a.every((word, index) => word === b[index]);
+
+/** True when one list is the other plus a single small function word that is not the first word. */
 function differsByFunctionWord(a: string[], b: string[]): boolean {
   const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
   if (longer.length - shorter.length !== 1) return false;
   let start = 0;
   while (start < shorter.length && shorter[start] === longer[start]) start += 1;
-  return FUNCTION_WORDS.has(longer[start]) && shorter.slice(start).every((word, offset) => word === longer[start + 1 + offset]);
+  return start > 0 && FUNCTION_WORDS.has(longer[start]) && sameWords(shorter.slice(start), longer.slice(start + 1));
 }
 
-function sentenceAlternatives(expected: string): Reading[] {
+function sentenceAlternatives(expected: string, language?: NumberLanguage): Reading[] {
   return expected
     .split(/\s+\/\s+(?![^()]*\))/) // a " / " inside parentheses stays part of the parenthetical
     .flatMap(parentheticalVariants)
-    .map((variant) => reading(sentenceTokens(variant)))
-    .filter((alternative) => alternative.length > 0);
+    .map((variant) => reading(variant, language))
+    .filter((alternative) => alternative.tokens.length > 0);
 }
 
-function isCorrectSentence(spoken: string, expected: string): boolean {
-  const actual = reading(sentenceTokens(spoken));
-  if (!actual.length) return false;
-  return sentenceAlternatives(expected).some((alternative) => {
-    if (actual.pronoun && alternative.pronoun && actual.pronoun !== alternative.pronoun) return false;
-    const exact = actual.rest.length === alternative.rest.length && actual.rest.every((word, index) => word === alternative.rest[index]);
-    return exact || (alternative.length >= TOLERANCE_MIN_WORDS && differsByFunctionWord(actual.rest, alternative.rest));
+function isCorrectSentence(spoken: string, expected: string, language?: NumberLanguage): boolean {
+  const actual = reading(spoken, language);
+  if (!actual.tokens.length) return false;
+  return sentenceAlternatives(expected, language).some((alternative) => {
+    const a = actual.tokens;
+    const e = alternative.tokens;
+    if (sameWords(a, e)) return true;
+    // A subject pronoun is optional, but only when everything after it is identical.
+    if (actual.pronoun && !alternative.pronoun && sameWords(a.slice(1), e)) return true;
+    if (alternative.pronoun && !actual.pronoun && sameWords(a, e.slice(1))) return true;
+    // Whole-list comparison, so a pronoun can never hide a swapped article or object pronoun.
+    return e.length >= TOLERANCE_MIN_WORDS && differsByFunctionWord(a, e);
   });
 }
 
@@ -135,20 +147,21 @@ function isCorrectSentence(spoken: string, expected: string): boolean {
  * Whether a spoken answer matches the expected one. Words take any of several alternatives. Sentences and
  * conjugations are matched on whole phrases, so commas and "or" stay part of the answer, and they forgive
  * a spoken or missing subject pronoun, English contractions, parentheticals, digits for number words, and
- * (in long sentences) a missing or extra article. Words also accept a number said as digits or words.
+ * (in long sentences) a missing or extra small function word. Words also accept a number said as digits.
+ * `language` is the language of the expected answer; it decides whether "once" is a number.
  */
-export function isCorrectAnswer(spoken: string, expected: string, kind: WordKind = 'word'): boolean {
-  if (kind !== 'word') return isCorrectSentence(spoken, expected);
+export function isCorrectAnswer(spoken: string, expected: string, kind: WordKind = 'word', language?: NumberLanguage): boolean {
+  if (kind !== 'word') return isCorrectSentence(spoken, expected, language);
   const actual = normalizeAnswer(spoken);
   if (!actual) return false;
   const alternatives = answerAlternatives(expected);
   if (alternatives.some((alternative) => alternative === actual)) return true;
   // A recognizer often returns "2" for "two" (or "two" for a card that says 2), so digits meet number words.
   // Two number words never match by value: "once" (an English word) must not accept "eleven", nor "diez" accept "ten".
-  const said = numberValue(actual);
+  const said = numberValue(actual, language);
   if (said === null) return false;
   const saidDigits = /^\d+$/.test(actual);
-  return alternatives.some((alternative) => numberValue(alternative) === said && (saidDigits || /^\d+$/.test(alternative)));
+  return alternatives.some((alternative) => numberValue(alternative, language) === said && (saidDigits || /^\d+$/.test(alternative)));
 }
 
 /** Whether recognition returned anything to judge: blank or whitespace-only results are silence, not a wrong answer. */

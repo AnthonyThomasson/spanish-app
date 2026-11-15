@@ -8,37 +8,50 @@ interface NumberWord {
   kind: Kind;
   value: number;
 }
+export type NumberLanguage = 'en' | 'es';
 
-const words = new Map<string, NumberWord>();
-const add = (kind: Kind, entries: Record<string, number>) => {
-  for (const [word, value] of Object.entries(entries)) words.set(word, { kind, value });
+const tables: Record<NumberLanguage, Map<string, NumberWord>> = { en: new Map(), es: new Map() };
+const add = (language: NumberLanguage, kind: Kind, entries: Record<string, number>) => {
+  for (const [word, value] of Object.entries(entries)) tables[language].set(word, { kind, value });
 };
 
-add('zero', { zero: 0, cero: 0 });
-add('unit', {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
-  uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9,
-});
-add('teen', {
+add('en', 'zero', { zero: 0 });
+add('en', 'unit', { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 });
+add('en', 'teen', {
   ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+});
+add('en', 'tens', { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 });
+add('en', 'hundred', { hundred: 100 });
+add('en', 'thousand', { thousand: 1000 });
+add('en', 'million', { million: 1_000_000 });
+
+add('es', 'zero', { cero: 0 });
+add('es', 'unit', { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 });
+// "once" is Spanish for eleven; in English it is an ordinary word, so only the Spanish table has it.
+add('es', 'teen', {
   diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
 });
-add('tens', {
-  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
-  veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
-});
-add('tensunit', {
+add('es', 'tens', { veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 });
+add('es', 'tensunit', {
   veintiuno: 21, veintiun: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25,
   veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29,
 });
-add('hundred', { hundred: 100, cien: 100, ciento: 100 });
-add('hundreds', {
+add('es', 'hundred', { cien: 100, ciento: 100 });
+add('es', 'hundreds', {
   doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300, cuatrocientos: 400, cuatrocientas: 400,
   quinientos: 500, quinientas: 500, seiscientos: 600, seiscientas: 600, setecientos: 700, setecientas: 700,
   ochocientos: 800, ochocientas: 800, novecientos: 900, novecientas: 900,
 });
-add('thousand', { thousand: 1000, mil: 1000 });
-add('million', { million: 1_000_000, millon: 1_000_000, millones: 1_000_000 });
+add('es', 'thousand', { mil: 1000 });
+add('es', 'million', { millon: 1_000_000, millones: 1_000_000 });
+
+/** The number words to read: the answer's own language, or both when unknown (without Spanish "once"). */
+function wordsFor(language?: NumberLanguage): Map<string, NumberWord> {
+  if (language) return tables[language];
+  const both = new Map([...tables.en, ...tables.es]);
+  both.delete('once');
+  return both;
+}
 
 const small: Kind[] = ['unit', 'teen', 'tens', 'tensunit'];
 /** Which kinds of number word may follow each kind inside one number. */
@@ -60,7 +73,7 @@ function connects(connector: string, previous: Kind, next: Kind): boolean {
   return ['hundred', 'thousand', 'million'].includes(previous) && [...small].includes(next);
 }
 
-function readNumber(tokens: string[], start: number): { value: number; end: number } | null {
+function readNumber(words: Map<string, NumberWord>, tokens: string[], start: number): { value: number; end: number } | null {
   let total = 0;
   let current = 0;
   let previous: Kind | null = null;
@@ -91,11 +104,14 @@ function readNumber(tokens: string[], start: number): { value: number; end: numb
 }
 
 /** Replaces each run of number words with its digits: ["forty", "two", "cats"] becomes ["42", "cats"]. */
-export function canonicalizeNumbers(tokens: string[]): string[] {
+export function canonicalizeNumbers(tokens: string[], language?: NumberLanguage): string[] {
+  const words = wordsFor(language);
   const result: string[] = [];
   let index = 0;
   while (index < tokens.length) {
-    const number = readNumber(tokens, index);
+    // English "a hundred" and "a thousand" are 100 and 1000.
+    const article = tokens[index] === 'a' && language !== 'es' && ['hundred', 'thousand', 'million'].includes(words.get(tokens[index + 1])?.kind ?? '');
+    const number = readNumber(words, tokens, article ? index + 1 : index);
     if (number) {
       result.push(String(number.value));
       index = number.end;
@@ -108,7 +124,7 @@ export function canonicalizeNumbers(tokens: string[]): string[] {
 }
 
 /** The number a whole answer says ("2", "two", "forty-two", "cuarenta y dos"), or null if it is anything else. */
-export function numberValue(text: string): number | null {
+export function numberValue(text: string, language?: NumberLanguage): number | null {
   const tokens = text
     .toLocaleLowerCase()
     .replace(/(\d),(?=\d{3}\b)/g, '$1')
@@ -117,6 +133,6 @@ export function numberValue(text: string): number | null {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
-  const canonical = canonicalizeNumbers(tokens);
+  const canonical = canonicalizeNumbers(tokens, language);
   return canonical.length === 1 && /^\d+$/.test(canonical[0]) ? Number(canonical[0]) : null;
 }
