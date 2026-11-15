@@ -1,5 +1,228 @@
 import { describe, expect, it } from 'vitest';
-import { hasSpokenText } from './matching';
+import { answerAlternatives, hasSpokenText, isCorrectAnswer, normalizeAnswer } from './matching';
+
+// Word matching is the pre-existing behaviour. These tests pin it down so sentence support cannot change it.
+describe('word matching (unchanged)', () => {
+  it('ignores case, accents, punctuation and leading articles', () => {
+    expect(normalizeAnswer('¡El Perro!')).toBe('perro');
+    expect(normalizeAnswer('to run')).toBe('run');
+    expect(normalizeAnswer('  Canción  ')).toBe('cancion');
+  });
+
+  it('splits alternatives on commas, semicolons, slashes and "or"', () => {
+    expect(answerAlternatives('house; home, flat or apartment / dwelling')).toEqual([
+      'house', 'home', 'flat', 'apartment', 'dwelling',
+    ]);
+  });
+
+  it('treats a parenthetical as optional', () => {
+    expect(answerAlternatives('car (m.)')).toEqual(['car m', 'car']);
+    expect(isCorrectAnswer('car', 'car (m.)')).toBe(true);
+  });
+
+  it('accepts any alternative and rejects other words', () => {
+    expect(isCorrectAnswer('home', 'house, home')).toBe(true);
+    expect(isCorrectAnswer('garden', 'house, home')).toBe(false);
+    expect(isCorrectAnswer('', 'house')).toBe(false);
+  });
+
+  it('does not apply sentence leniency to words', () => {
+    expect(isCorrectAnswer('canto', 'yo canto')).toBe(false);
+    expect(isCorrectAnswer("don't", 'do not')).toBe(false);
+  });
+
+  it('defaults to word matching and accepts an explicit word kind', () => {
+    expect(isCorrectAnswer('home', 'house, home', 'word')).toBe(true);
+    expect(isCorrectAnswer('canto', 'yo canto', 'word')).toBe(false);
+  });
+});
+
+describe('sentence matching: alternatives', () => {
+  it('does not split on commas, semicolons or "or"', () => {
+    expect(isCorrectAnswer('We are tired, and you are hungry', 'We are tired, and you are hungry', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('we are tired', 'We are tired, and you are hungry', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('you are hungry', 'We are tired or you are hungry', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we are tired', 'we are tired; you are hungry', 'sentence')).toBe(false);
+  });
+
+  it('is not fooled by "or" inside a sentence', () => {
+    expect(isCorrectAnswer('do you want tea or coffee', 'Do you want tea or coffee?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('coffee', 'Do you want tea or coffee?', 'sentence')).toBe(false);
+  });
+
+  it('splits only on " / "', () => {
+    expect(isCorrectAnswer('he reads the paper', 'he reads the paper / she reads the paper', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('she reads the paper', 'he reads the paper / she reads the paper', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('he reads', 'he reads the paper / she reads the paper', 'sentence')).toBe(false);
+  });
+
+  it('does not split on a slash without surrounding spaces', () => {
+    expect(isCorrectAnswer('he and she', 'he and/or she', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('he and or she', 'he and/or she', 'sentence')).toBe(true);
+  });
+
+  it('ignores punctuation, case and accents but keeps articles', () => {
+    expect(isCorrectAnswer('donde esta la biblioteca', '¿Dónde está la biblioteca?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('donde esta biblioteca', '¿Dónde está la biblioteca?', 'sentence')).toBe(false);
+  });
+
+  it('applies the same rules to conjugation cards', () => {
+    expect(isCorrectAnswer('vos pensas', 'vos pensás', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('think', 'vos pensás', 'conjugation')).toBe(false);
+  });
+
+  it('does not accept an empty answer', () => {
+    expect(isCorrectAnswer('', 'we eat', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('   ', 'we eat', 'conjugation')).toBe(false);
+  });
+});
+
+describe('sentence matching: Spanish subject pronouns', () => {
+  it('accepts the pronoun to be dropped from the spoken answer', () => {
+    expect(isCorrectAnswer('almuerzo', 'yo almuerzo', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('pensás', 'vos pensás', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('piensan', 'ellas piensan', 'conjugation')).toBe(true);
+  });
+
+  it('accepts a pronoun the expected answer does not have', () => {
+    expect(isCorrectAnswer('yo almuerzo', 'almuerzo', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('nosotros cenamos temprano', 'cenamos temprano', 'sentence')).toBe(true);
+  });
+
+  it('rejects a different pronoun when both sides have one', () => {
+    expect(isCorrectAnswer('ellos piensan', 'ellas piensan', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('yo canta', 'ella canta', 'conjugation')).toBe(false);
+  });
+
+  it('still requires the verb form to match', () => {
+    expect(isCorrectAnswer('yo almuerzas', 'yo almuerzo', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('almorzamos', 'yo almuerzo', 'conjugation')).toBe(false);
+  });
+
+  it('treats él with and without its accent the same', () => {
+    expect(isCorrectAnswer('él duerme', 'él duerme', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('el duerme', 'él duerme', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('duerme', 'él duerme', 'conjugation')).toBe(true);
+  });
+
+  it('treats usted and Ud. as the same, and ustedes and Uds.', () => {
+    expect(isCorrectAnswer('usted come', 'Ud. come', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('Ud come', 'usted come', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('ustedes comen', 'Uds. comen', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('come', 'Ud. come', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('ustedes come', 'Ud. come', 'conjugation')).toBe(false);
+  });
+
+  it('accepts nosotras for nosotros', () => {
+    expect(isCorrectAnswer('nosotras vivimos', 'nosotros vivimos', 'conjugation')).toBe(true);
+  });
+
+  it('does not strip a lone pronoun', () => {
+    expect(isCorrectAnswer('ella', 'ella', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('', 'ella', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('yo', 'ella', 'sentence')).toBe(false);
+  });
+
+  it('only treats a leading pronoun as optional', () => {
+    expect(isCorrectAnswer('canta ella', 'ella canta', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('hoy yo canto', 'hoy canto', 'sentence')).toBe(false);
+  });
+});
+
+describe('sentence matching: English contractions', () => {
+  it.each([
+    ["I don't know", 'I do not know'],
+    ["he doesn't sleep", 'he does not sleep'],
+    ["I'm happy", 'I am happy'],
+    ["he's tall", 'he is tall'],
+    ["she's tall", 'she is tall'],
+    ["it's cold", 'it is cold'],
+    ["we're ready", 'we are ready'],
+    ["they're late", 'they are late'],
+    ["you're right", 'you are right'],
+    ["it isn't open", 'it is not open'],
+    ["they aren't here", 'they are not here'],
+    ["I can't swim", 'I can not swim'],
+    ["I can't swim", 'I cannot swim'],
+    ["we won't go", 'we will not go'],
+  ])('treats %s and %s as equal', (a, b) => {
+    expect(isCorrectAnswer(a, b, 'sentence')).toBe(true);
+    expect(isCorrectAnswer(b, a, 'sentence')).toBe(true);
+  });
+
+  it('handles curly apostrophes and capitals', () => {
+    expect(isCorrectAnswer('I’m Happy', 'I am happy', 'sentence')).toBe(true);
+    expect(isCorrectAnswer("We're Ready", 'we are ready', 'conjugation')).toBe(true);
+  });
+
+  it('does not make unrelated words equal', () => {
+    expect(isCorrectAnswer("he's tall", 'she is tall', 'sentence')).toBe(false);
+    expect(isCorrectAnswer("I don't know", 'I know', 'sentence')).toBe(false);
+  });
+
+  it('does not expand contractions for word cards', () => {
+    expect(isCorrectAnswer("don't", 'do not')).toBe(false);
+  });
+});
+
+describe('sentence matching: parentheticals', () => {
+  it('treats a trailing or inner parenthetical as optional', () => {
+    expect(isCorrectAnswer('you think', 'you (formal) think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('they think', 'they (f.) think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('you eat', 'you eat (formal)', 'conjugation')).toBe(true);
+  });
+
+  it('also accepts the parenthetical text when it is said', () => {
+    expect(isCorrectAnswer('you formal think', 'you (formal) think', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('they f think', 'they (f.) think', 'conjugation')).toBe(true);
+  });
+
+  it('handles several parentheticals', () => {
+    expect(isCorrectAnswer('you think', 'you (formal) think (a lot)', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('you think a lot', 'you (formal) think (a lot)', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('you formal think', 'you (formal) think (a lot)', 'sentence')).toBe(true);
+  });
+
+  it('does not treat other words as the parenthetical', () => {
+    expect(isCorrectAnswer('you informal think', 'you (formal) think', 'conjugation')).toBe(false);
+  });
+});
+
+describe('sentence matching: long-sentence tolerance', () => {
+  const six = 'we eat dinner with my grandmother';
+  const spanish = 'nosotros cenamos con mi abuela los domingos';
+
+  it('accepts one wrong, missing or extra word in a sentence of six or more words', () => {
+    expect(isCorrectAnswer('we eat lunch with my grandmother', six, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('we eat dinner with grandmother', six, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('we eat dinner with my dear grandmother', six, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('cenamos con mi abuela los sabados', spanish, 'sentence')).toBe(true);
+  });
+
+  it('rejects two differing words', () => {
+    expect(isCorrectAnswer('we eat lunch with my sister', six, 'sentence')).toBe(false);
+    expect(isCorrectAnswer('we eat dinner with', six, 'sentence')).toBe(false);
+  });
+
+  it('is exact for sentences under six words', () => {
+    expect(isCorrectAnswer('we eat lunch with grandmother', 'we eat dinner with grandmother', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('she reads a book now', 'she reads a book here', 'sentence')).toBe(false);
+  });
+
+  it('combines with the optional pronoun', () => {
+    expect(isCorrectAnswer('cenamos con mi abuela los sabados', 'nosotros cenamos con mi abuela los domingos', 'sentence')).toBe(true);
+  });
+
+  it('applies to whichever alternative is closest', () => {
+    const expected = 'they walk to school every morning / they go to school on foot every morning';
+    expect(isCorrectAnswer('they walk to school every day', expected, 'sentence')).toBe(true);
+    expect(isCorrectAnswer('they go to school on foot every day', expected, 'sentence')).toBe(true);
+  });
+
+  it('never applies to word cards', () => {
+    expect(isCorrectAnswer('we eat lunch with my grandmother', six, 'word')).toBe(false);
+  });
+});
 
 describe('hasSpokenText', () => {
   it('is false when recognition returned nothing', () => {

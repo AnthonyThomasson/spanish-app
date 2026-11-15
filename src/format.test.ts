@@ -23,17 +23,17 @@ describe('pluralize', () => {
 });
 
 describe('formatChapterCount', () => {
-  it('shows only the word count when nothing is hidden', () => {
-    expect(formatChapterCount(42, 0)).toBe('42 words');
+  it('shows only the card count when nothing is hidden', () => {
+    expect(formatChapterCount(42, 0)).toBe('42 cards');
   });
 
-  it('adds the hidden count when some words are hidden', () => {
-    expect(formatChapterCount(42, 12)).toBe('42 words · 12 hidden');
+  it('adds the hidden count when some cards are hidden', () => {
+    expect(formatChapterCount(42, 12)).toBe('42 cards · 12 hidden');
   });
 
-  it('handles every word hidden and a single-word chapter', () => {
-    expect(formatChapterCount(5, 5)).toBe('5 words · 5 hidden');
-    expect(formatChapterCount(1, 0)).toBe('1 word');
+  it('handles every card hidden and a single-card chapter', () => {
+    expect(formatChapterCount(5, 5)).toBe('5 cards · 5 hidden');
+    expect(formatChapterCount(1, 0)).toBe('1 card');
   });
 });
 
@@ -66,8 +66,8 @@ describe('formatHiddenDate', () => {
 });
 
 describe('allHiddenMessage', () => {
-  it('names the earliest date the words come back', () => {
+  it('names the earliest date the cards come back', () => {
     const noon = new Date(2026, 11, 6, 12, 0, 0).getTime();
-    expect(allHiddenMessage(noon, 'en-US')).toBe('All these words are hidden until December 6, 2026.');
+    expect(allHiddenMessage(noon, 'en-US')).toBe('All these cards are hidden until December 6, 2026.');
   });
 });

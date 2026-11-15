@@ -4,10 +4,10 @@ export function pluralize(count: number, singular: string, plural = `${singular}
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
 }
 
-/** "42 words · 12 hidden", or just "42 words" when none are hidden. */
+/** "42 cards · 12 hidden", or just "42 cards" when none are hidden. A card is a word, sentence or conjugation. */
 export function formatChapterCount(total: number, hidden: number): string {
-  const words = pluralize(total, 'word');
-  return hidden > 0 ? `${words} · ${hidden.toLocaleString()} hidden` : words;
+  const cards = pluralize(total, 'card');
+  return hidden > 0 ? `${cards} · ${hidden.toLocaleString()} hidden` : cards;
 }
 
 /** "3 chapters · 120 cards", where `cards` only counts cards that will be asked. */
@@ -21,5 +21,5 @@ export function formatHiddenDate(epochMs: number, locale?: string): string {
 }
 
 export function allHiddenMessage(earliestEpochMs: number, locale?: string): string {
-  return `All these words are hidden until ${formatHiddenDate(earliestEpochMs, locale)}.`;
+  return `All these cards are hidden until ${formatHiddenDate(earliestEpochMs, locale)}.`;
 }

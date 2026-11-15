@@ -1,9 +1,15 @@
+/** What a card holds. Absent means a vocabulary word. Sentences and conjugations are matched more leniently. */
+export type WordKind = 'word' | 'sentence' | 'conjugation';
+
 export interface Word {
   spanish: string;
   english: string;
   partOfSpeech?: string;
   gender?: string;
   sourcePage: number;
+  kind?: WordKind;
+  /** The tense of a conjugation card, e.g. "present". */
+  tense?: string;
 }
 
 export interface Chapter {
