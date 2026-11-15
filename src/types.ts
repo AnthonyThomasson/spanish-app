@@ -17,5 +17,11 @@ export interface Vocabulary {
   chapters: Chapter[];
 }
 
-export type Direction = 'es-en' | 'en-es';
+export type CardDirection = 'es-en' | 'en-es';
+export type Direction = CardDirection | 'both';
+
+export interface Card {
+  word: Word;
+  direction: CardDirection;
+}
 export type Mode = 'flip' | 'auto' | 'answer';

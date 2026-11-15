@@ -1,7 +1,7 @@
 import './style.css';
 import { isCorrectAnswer } from './matching';
 import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
-import type { Chapter, Direction, Mode, Vocabulary, Word } from './types';
+import type { Card, Chapter, Direction, Mode, Vocabulary } from './types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -34,9 +34,10 @@ app.innerHTML = `
           <div class="section-heading"><div><span class="step-number">02</span><h2>Set your pace</h2></div></div>
           <fieldset>
             <legend>Direction</legend>
-            <div class="segmented two-up">
-              <label><input type="radio" name="direction" value="es-en" checked><span><b>Spanish</b><small>to English</small></span></label>
+            <div class="segmented three-up">
+              <label><input type="radio" name="direction" value="es-en"><span><b>Spanish</b><small>to English</small></span></label>
               <label><input type="radio" name="direction" value="en-es"><span><b>English</b><small>to Spanish</small></span></label>
+              <label><input type="radio" name="direction" value="both" checked><span><b>Both</b><small>mixed</small></span></label>
             </div>
           </fieldset>
           <fieldset>
@@ -112,7 +113,7 @@ const chapterList = element<HTMLDivElement>('chapter-list');
 const speaker = new Speaker();
 
 let chapters: Chapter[] = [];
-let deck: Word[] = [];
+let deck: Card[] = [];
 let currentIndex = 0;
 let misses = 0;
 let revealed = false;
@@ -120,12 +121,12 @@ let paused = false;
 let active = false;
 let runId = 0;
 let recognition: SpeechRecognitionLike | null = null;
-let settings = { direction: 'es-en' as Direction, mode: 'flip' as Mode, delay: 3, shuffle: true };
+let settings = { direction: 'both' as Direction, mode: 'flip' as Mode, delay: 3, shuffle: true };
 
-const promptFor = (word: Word) => settings.direction === 'es-en' ? word.spanish : word.english;
-const answerFor = (word: Word) => settings.direction === 'es-en' ? word.english : word.spanish;
-const promptLanguage = () => settings.direction === 'es-en' ? 'es' as const : 'en' as const;
-const answerLanguage = () => settings.direction === 'es-en' ? 'en' as const : 'es' as const;
+const promptFor = ({ word, direction }: Card) => direction === 'es-en' ? word.spanish : word.english;
+const answerFor = ({ word, direction }: Card) => direction === 'es-en' ? word.english : word.spanish;
+const promptLanguage = ({ direction }: Card) => direction === 'es-en' ? 'es' as const : 'en' as const;
+const answerLanguage = ({ direction }: Card) => direction === 'es-en' ? 'en' as const : 'es' as const;
 
 async function loadVocabulary(): Promise<void> {
   try {
@@ -224,7 +225,11 @@ function startDeck(event?: SubmitEvent): void {
   }
   element('start-error').textContent = '';
   const words = chapters.filter((chapter) => selected.includes(chapter.number)).flatMap((chapter) => chapter.words);
-  deck = settings.shuffle ? shuffle(words) : [...words];
+  const ordered = settings.shuffle ? shuffle(words) : words;
+  deck = ordered.map((word) => ({
+    word,
+    direction: settings.direction === 'both' ? (Math.random() < 0.5 ? 'es-en' : 'en-es') : settings.direction,
+  }));
   currentIndex = 0;
   active = true;
   paused = false;
@@ -242,15 +247,15 @@ function showCard(): void {
   }
   misses = 0;
   revealed = false;
-  const word = deck[currentIndex];
+  const card = deck[currentIndex];
   const token = runId;
   element('session-mode').textContent = { flip: 'Flip cards', auto: 'Auto listen', answer: 'Speak answers' }[settings.mode];
-  element('session-direction').textContent = settings.direction === 'es-en' ? 'ES → EN' : 'EN → ES';
+  element('session-direction').textContent = card.direction === 'es-en' ? 'ES → EN' : 'EN → ES';
   element('progress-text').textContent = `${currentIndex + 1} / ${deck.length}`;
   element<HTMLDivElement>('progress-bar').style.width = `${((currentIndex + 1) / deck.length) * 100}%`;
-  element('prompt-label').textContent = settings.direction === 'es-en' ? 'SPANISH' : 'ENGLISH';
-  element('card-prompt').textContent = promptFor(word);
-  element('card-prompt').classList.toggle('long-text', promptFor(word).length > 45);
+  element('prompt-label').textContent = card.direction === 'es-en' ? 'SPANISH' : 'ENGLISH';
+  element('card-prompt').textContent = promptFor(card);
+  element('card-prompt').classList.toggle('long-text', promptFor(card).length > 45);
   element('card-answer').hidden = true;
   element('card-detail').hidden = true;
   element('flip-hint').hidden = settings.mode !== 'flip';
@@ -260,17 +265,17 @@ function showCard(): void {
   element('next-button').innerHTML = settings.mode === 'flip' ? 'Next card <span aria-hidden="true">→</span>' : 'Skip card <span aria-hidden="true">→</span>';
   setStatus(settings.mode === 'flip' ? 'Tap the card when you’re ready.' : 'Get ready to listen…');
 
-  if (settings.mode === 'auto') void runAuto(word, token);
-  if (settings.mode === 'answer') void runAnswer(word, token);
+  if (settings.mode === 'auto') void runAuto(card, token);
+  if (settings.mode === 'answer') void runAnswer(card, token);
 }
 
 function revealAnswer(): void {
   revealed = true;
-  const word = deck[currentIndex];
+  const card = deck[currentIndex];
   const answer = element('card-answer');
-  answer.textContent = answerFor(word);
+  answer.textContent = answerFor(card);
   answer.hidden = false;
-  const detail = [word.partOfSpeech, word.gender].filter(Boolean).join(' · ');
+  const detail = [card.word.partOfSpeech, card.word.gender].filter(Boolean).join(' · ');
   element('card-detail').textContent = detail;
   element('card-detail').hidden = !detail;
   element('flip-hint').hidden = true;
@@ -316,32 +321,32 @@ async function wait(milliseconds: number, token: number): Promise<boolean> {
   });
 }
 
-async function runAuto(word: Word, token: number): Promise<void> {
+async function runAuto(card: Card, token: number): Promise<void> {
   setStatus('Listen to the prompt…', 'speaking');
-  await speaker.speak(promptFor(word), promptLanguage());
+  await speaker.speak(promptFor(card), promptLanguage(card));
   if (token !== runId || !await wait(settings.delay * 1000, token)) return;
   revealAnswer();
   setStatus('Here’s the answer.', 'speaking');
-  await speaker.speak(answerFor(word), answerLanguage());
+  await speaker.speak(answerFor(card), answerLanguage(card));
   if (token !== runId || !await wait(1800, token)) return;
   currentIndex += 1;
   showCard();
 }
 
-async function runAnswer(word: Word, token: number): Promise<void> {
+async function runAnswer(card: Card, token: number): Promise<void> {
   setStatus('Listen to the prompt…', 'speaking');
-  await speaker.speak(promptFor(word), promptLanguage());
+  await speaker.speak(promptFor(card), promptLanguage(card));
   if (token !== runId || !await wait(350, token)) return;
-  startListening(word, token);
+  startListening(card, token);
 }
 
-function startListening(word: Word, token: number): void {
+function startListening(card: Card, token: number): void {
   const Recognition = recognitionConstructor();
   if (!Recognition || paused || token !== runId) return;
   recognition?.abort();
   const current = new Recognition();
   recognition = current;
-  current.lang = answerLanguage() === 'es' ? 'es-ES' : 'en-US';
+  current.lang = answerLanguage(card) === 'es' ? 'es-ES' : 'en-US';
   current.continuous = false;
   current.interimResults = false;
   current.maxAlternatives = 5;
@@ -354,9 +359,9 @@ function startListening(word: Word, token: number): void {
     for (let i = 0; i < event.results.length; i++) {
       for (let j = 0; j < event.results[i].length; j++) transcripts.push(event.results[i][j].transcript);
     }
-    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(word)));
+    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card)));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
-    void handleSpokenAnswer(correct, word, token);
+    void handleSpokenAnswer(correct, card, token);
   };
   current.onerror = (event) => {
     if (event.error === 'aborted') return;
@@ -372,7 +377,7 @@ function startListening(word: Word, token: number): void {
   current.onend = () => {
     if (!handled && token === runId && active && !paused) {
       setStatus('I didn’t catch that. Listening again…', 'listening');
-      window.setTimeout(() => startListening(word, token), 250);
+      window.setTimeout(() => startListening(card, token), 250);
     }
   };
   try {
@@ -382,7 +387,7 @@ function startListening(word: Word, token: number): void {
   }
 }
 
-async function handleSpokenAnswer(correct: boolean, word: Word, token: number): Promise<void> {
+async function handleSpokenAnswer(correct: boolean, card: Card, token: number): Promise<void> {
   recognition?.abort();
   recognition = null;
   if (token !== runId) return;
@@ -401,7 +406,7 @@ async function handleSpokenAnswer(correct: boolean, word: Word, token: number): 
   if (misses >= 3) {
     revealAnswer();
     setStatus('The answer is above. Let’s keep going.');
-    await speaker.speak(answerFor(word), answerLanguage());
+    await speaker.speak(answerFor(card), answerLanguage(card));
     if (await wait(2800, token)) {
       currentIndex += 1;
       showCard();
@@ -410,7 +415,7 @@ async function handleSpokenAnswer(correct: boolean, word: Word, token: number): 
   }
   setStatus(`Not quite — try again. ${3 - misses} ${3 - misses === 1 ? 'try' : 'tries'} before I reveal it.`);
   await speaker.speak('Try again', 'en');
-  if (token === runId && !paused) startListening(word, token);
+  if (token === runId && !paused) startListening(card, token);
 }
 
 function togglePause(): void {
