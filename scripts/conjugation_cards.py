@@ -123,7 +123,7 @@ def parse_header(text: str) -> dict | None:
     if not match:
         return None
     gloss = (match.group("gloss") or "").strip()
-    return {"infinitive": match.group("infinitive").lower(), "gloss": gloss}
+    return {"infinitive": match.group("infinitive").lower(), "gloss": gloss, "has_paren": bool(match.group("paren"))}
 
 
 def clean_gloss(gloss: str) -> str:
@@ -198,11 +198,19 @@ def read_image(observations: list[dict], report: Counter) -> tuple[list[dict], l
             if abs(item["x"] - header["x"]) <= 0.04 and 0 < header["y"] - item["y"] <= GLOSS_LINE_GAP
             and not re.match(r"^(?:I|you|he|she|we|they)\b", item["text"])
         ]
+        header["inline_gloss"] = bool(header["gloss"])
         header["gloss"] = clean_gloss(header["gloss"])
         if below and header["gloss"]:
             header["gloss"] = ""  # the gloss wraps onto another line: the word card has the whole thing
         elif not header["gloss"] and len(below) == 1:
             header["gloss"] = clean_gloss(below[0]["text"]) if below[0]["text"].lower().startswith("to ") else ""
+        header["has_gloss_line"] = bool(below) and any(item["text"].lower().startswith("to ") for item in below)
+    # A lone infinitive-looking word ("lugar", a label) is a header only with a gloss, a parenthetical
+    # ("cepillarse (los dientes)") or a "to ..." line under it.
+    headers = [
+        header for header in headers
+        if header["gloss"] or header["has_paren"] or header["has_gloss_line"] or header["inline_gloss"]
+    ]
     return headers, cells
 
 
@@ -219,6 +227,24 @@ def stem_change_matches(stem: str, observed: str) -> bool:
     for old, new in STEM_CHANGES:
         for index, letter in enumerate(stem):
             if letter == old and stem[:index] + new + stem[index + 1:] == observed:
+                return True
+    return False
+
+
+YO_IRREGULAR_SUFFIXES = ("zc", "ig", "g", "j")
+
+
+def has_irregular_yo_ending(plain_stem: str, stem: str) -> bool:
+    """True for a yo stem that is the verb's stem (or its stem-change variant) plus g / zc / ig / j,
+    allowing the stem's last letters to give way (hac- -> hag-, conoc- -> conozc-, segu- -> sig-)."""
+    variants = {plain_stem} | {
+        plain_stem[:index] + new + plain_stem[index + 1:]
+        for old, new in STEM_CHANGES for index, letter in enumerate(plain_stem) if letter == old
+    }
+    for suffix in YO_IRREGULAR_SUFFIXES:
+        if stem.endswith(suffix) and len(stem) > len(suffix):
+            rest = stem[: -len(suffix)]
+            if any(variant.startswith(rest) and len(variant) - len(rest) <= 2 for variant in variants):
                 return True
     return False
 
@@ -245,11 +271,8 @@ def check_slot(base: str, slot: str, form: str) -> str | None:
         return "exact"
     if stem_change_matches(plain_stem, stem):
         return "guess"
-    if slot == "1sg" and len(stem) >= 2:
-        starts = {plain_stem[:2]} | {plain_stem[:index] + new + plain_stem[index + 1:] for old, new in STEM_CHANGES
-                                     for index, letter in enumerate(plain_stem[:2]) if letter == old}
-        if stem[:2] in {item[:2] for item in starts}:
-            return "guess"  # tengo, hago, salgo, conozco, sigo: the yo form has its own irregularity
+    if slot == "1sg" and has_irregular_yo_ending(plain_stem, stem):
+        return "guess"  # tengo, hago, salgo, conozco, sigo: the yo form has its own irregularity
     return None
 
 

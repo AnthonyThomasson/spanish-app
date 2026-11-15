@@ -112,6 +112,14 @@ class CheckSlotTests(unittest.TestCase):
         self.assertEqual(check_slot("tumer", "1sg", "tumgo"), "guess")
         self.assertIsNone(check_slot("tumer", "1sg", "xumgo"))
 
+    def test_a_yo_slip_that_keeps_the_first_letters_is_not_accepted(self):
+        for form in ("folbro", "folcho", "folmu", "folmaro"):
+            self.assertIsNone(check_slot("folmar", "1sg", form), form)
+        self.assertEqual(check_slot("hacer", "1sg", "hago"), "guess")
+        self.assertEqual(check_slot("conocer", "1sg", "conozco"), "guess")
+        self.assertEqual(check_slot("caer", "1sg", "caigo"), "guess")
+        self.assertEqual(check_slot("seguir", "1sg", "sigo"), "guess")
+
     def test_irregular_verbs(self):
         self.assertEqual(check_slot("ser", "1sg", "soy"), "exact")
         self.assertEqual(check_slot("ser", "3pl", "son"), "exact")
@@ -286,6 +294,12 @@ class ParseImageTests(unittest.TestCase):
         self.assertEqual(cards[0].conjugation.gloss, "to blorp")
         self.assertEqual(report["conjugations.verbs_skipped_no_forms"], 0)
 
+    def test_a_lone_noun_that_ends_like_an_infinitive_is_not_a_header(self):
+        items = block("folmar to blorp", FOLMAR) + [obs("lugar", 0.0, 0.88), obs("mujer", 0.2, 0.5)]
+        cards, report = cards_of(image("p100_00.png", items))
+        self.assertEqual({card.conjugation.infinitive for card in cards}, {"folmar"})
+        self.assertEqual(len(cards), 9)
+
     def test_an_infinitive_that_lost_its_accent_is_restored(self):
         forms = ("oigo", "oyes", "oye", "oímos", "oís", "oyen")
         cards, _ = cards_of(image("p124_01.png", block("oir to hear", forms)), chapter=6)
@@ -420,7 +434,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(stats["cardsByChapter"]["5"]["conjugation"], 9)
 
     def test_gloss_recovered_from_an_infinitive_word_card(self):
-        header_only = [obs("folmar", 0.0, 0.95)] + block("folmar", FOLMAR)[1:]
+        header_only = [obs("folmar to blorp,", 0.0, 0.95)] + block("folmar", FOLMAR)[1:]
         words = [two_column_words()]
         vocabulary, stats = self.run_pipeline(words + [image("p105_00.png", header_only)])
         conjugations = [w for w in vocabulary["chapters"][4]["words"] if w.get("kind") == "conjugation"]
@@ -428,7 +442,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(conjugations[0]["english"], "I blorp")
 
     def test_unknown_gloss_skips_the_verb_and_counts_it(self):
-        header_only = [obs("folmar", 0.0, 0.95)] + block("folmar", FOLMAR)[1:]
+        header_only = [obs("folmar (los wibbles)", 0.0, 0.95)] + block("folmar", FOLMAR)[1:]
         vocabulary, stats = self.run_pipeline([image("p105_00.png", header_only)])
         self.assertEqual([w for w in vocabulary["chapters"][4]["words"] if w.get("kind") == "conjugation"], [])
         self.assertEqual(stats["report"]["conjugations.cards_skipped_no_gloss"], 9)
