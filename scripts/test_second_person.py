@@ -91,6 +91,7 @@ class VosotrosTests(unittest.TestCase):
             ("Os veo mañana.", "I see you tomorrow."),
             ("Los amigos vuestros viven aquí.", "Your friends live here."),
             ("Divertíos mucho.", "Have a good time."),
+            ("Leedlo.", "Read it."),
         ]:
             self.assertEqual(run(spanish, english).status, "dropped", spanish)
 

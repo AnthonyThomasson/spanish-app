@@ -125,7 +125,9 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
             and first[:-2] + {"ad": "ar", "ed": "er", "id": "ir"}[first[-2:]] in lexicon.glosses
         )
     )
-    attached_os = _is_attached_os_imperative(first, lexicon)
+    attached_os = _is_attached_os_imperative(first, lexicon) or bool(
+        re.fullmatch(r"[a-záéíóú]{2,}[aei]d(?:lo|la|los|las|le|les|me|nos)", first)
+    )
     verb_forms = [token for token in tokens if re.fullmatch(r"[a-záéíóú]+(?:áis|éis)", token.lower())]
     if attached_os:
         return Outcome("dropped", spanish, "vosotros")
