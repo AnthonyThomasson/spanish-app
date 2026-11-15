@@ -10,12 +10,15 @@
     "preview": "vite preview --host",
     "android:sync": "npm run build && cap sync android",
     "android:apk": ". scripts/android-env.sh && npm run android:sync && cd android && ./gradlew assembleDebug && cd .. && mkdir -p release && cp android/app/build/outputs/apk/debug/app-debug.apk release/spanish-app.apk",
-    "android:serve": "python3 -m http.server 8787 --bind 0.0.0.0 --directory release"
+    "android:serve": "python3 -m http.server 8787 --bind 0.0.0.0 --directory release",
+    "phone": "node scripts/phone.mjs",
+    "test": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
     "@types/node": "^26.6.6",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "qrcode": "^1.5.4",
     "typescript": "~5.9.3",
     "vite": "^7.2.2"
   },
