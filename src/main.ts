@@ -5,6 +5,7 @@ import { buildNotification } from './notification';
 import { ensureMicrophonePermission } from './microphone';
 import { RecognitionMonitor, recognitionFailureMessage } from './recognition-errors';
 import { dispatchBackgroundAction } from './session-actions';
+import { singleFlight } from './single-flight';
 import { shouldAutoPauseWhenHidden } from './session-policy';
 import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Card, Chapter, Direction, Mode, Vocabulary } from './types';
@@ -219,8 +220,7 @@ function shuffle<T>(items: T[]): T[] {
   return result;
 }
 
-async function startDeck(event?: SubmitEvent): Promise<void> {
-  event?.preventDefault();
+async function beginDeck(): Promise<void> {
   readSettings();
   const selected = selectedChapterNumbers();
   if (!selected.length) {
@@ -249,6 +249,11 @@ async function startDeck(event?: SubmitEvent): Promise<void> {
   sessionView.hidden = false;
   showCard();
 }
+
+// Starting can wait on a permission prompt, so ignore repeat taps until it finishes.
+const startDeck = singleFlight(beginDeck, (busy) => {
+  document.querySelectorAll<HTMLButtonElement>('.start-button, #restart-deck').forEach((button) => { button.disabled = busy; });
+});
 
 function showCard(): void {
   stopCurrent();
@@ -488,7 +493,10 @@ function returnToSetup(): void {
   setupView.hidden = false;
 }
 
-form.addEventListener('submit', startDeck);
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void startDeck();
+});
 form.addEventListener('change', (event) => {
   const target = event.target as HTMLInputElement;
   if (target.name === 'mode') {
