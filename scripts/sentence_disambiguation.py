@@ -23,6 +23,8 @@ from difflib import SequenceMatcher
 from spanish_verbs import strip_accents
 
 SENTENCE = "sentence"
+# The fixed tags (besides "Sp. <words>"); src/spoken-text.ts strips these, and a test keeps the two in step.
+FIXED_TAGS = ("vos", "Ud.", "Uds.", "m.", "f.", "preterit", "imperfect", "pronoun before", "pronoun attached")
 TOKEN = re.compile(r"[a-záéíóúüñ]+")
 SUBJECTS = {"yo", "el", "ella", "ellos", "ellas", "nosotros", "ud", "uds", "vos"}
 CLITICS = {"se", "te", "me", "nos", "lo", "la", "los", "las", "le", "les"}
@@ -39,11 +41,15 @@ def tokens(text: str) -> list[str]:
 
 
 def insert_tag(english: str, tag: str) -> str:
-    """'Drink.' -> 'Drink (vos).' The tag goes before the closing punctuation."""
-    terminal = re.search(r"[.?!]+[\"”'’]*$", english)
-    if not terminal:
-        return f"{english} ({tag})"
-    return f"{english[:terminal.start()]} ({tag}){terminal.group(0)}"
+    """'Drink.' -> 'Drink (vos).' The tag goes before the closing punctuation, in each ' / ' alternative."""
+
+    def tagged(part: str) -> str:
+        terminal = re.search(r"[.?!]+[\"”'’]*$", part)
+        if not terminal:
+            return f"{part} ({tag})"
+        return f"{part[:terminal.start()]} ({tag}){terminal.group(0)}"
+
+    return " / ".join(tagged(part) for part in english.split(" / "))
 
 
 # --- classifiers: each takes a card's Spanish and returns a tag, or None when it cannot say -------------
@@ -130,7 +136,7 @@ for _stem_forms in (
     "supe supo supimos supieron", "traje trajo trajimos trajeron", "anduve anduvo anduvimos anduvieron",
 ):
     PRETERIT_IRREGULAR.update(_stem_forms.split())
-PRETERIT_REGULAR = re.compile(r"(?:[aeiou]ron|[aei]ste|[^aeiou]ó|[^aeiou]é)$")
+PRETERIT_REGULAR = re.compile(r"(?:[aeiou]ron|(?:aste|iste)(?<=.{6})|[^aeiou]ó|[^aeiou]é)$")
 NOT_PRETERIT = {"qué", "café", "porqué", "canapé", "bebé", "sofá"}
 
 
@@ -272,7 +278,7 @@ def merge_spanish_collisions(words: list[dict], report: Counter) -> list[dict]:
 
 
 def without_trailing_pronoun(spanish: str) -> str:
-    return re.sub(r"\s+Uds?\.?(?=[.!?]*$)", "", spanish)
+    return re.sub(r"\s+(?:Uds?\.?|ustedes?)(?=[.!?]*$)", "", spanish, flags=re.IGNORECASE)
 
 
 def drop_pronoun_duplicates(words: list[dict], report: Counter) -> list[dict]:
@@ -293,12 +299,29 @@ def drop_pronoun_duplicates(words: list[dict], report: Counter) -> list[dict]:
 
 
 def collision_groups(words: list[dict]) -> list[list[dict]]:
-    """Sentence cards that share an English prompt but have different Spanish answers."""
-    by_prompt: dict[str, list[dict]] = defaultdict(list)
-    for card in words:
-        if is_sentence(card):
-            by_prompt[fold(card["english"])].append(card)
-    return [cards for cards in by_prompt.values() if len({fold(card["spanish"]) for card in cards}) > 1]
+    """Sentence cards that share an English prompt (or one alternative of a merged prompt) but have different
+    Spanish answers. Cards linked through any shared prompt end up in the same group."""
+    cards = [card for card in words if is_sentence(card)]
+    parent = list(range(len(cards)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    owner: dict[str, int] = {}
+    for index, card in enumerate(cards):
+        for alternative in card["english"].split(" / "):
+            key = fold(alternative)
+            if key in owner:
+                parent[find(index)] = find(owner[key])
+            else:
+                owner[key] = index
+    grouped: dict[int, list[dict]] = defaultdict(list)
+    for index, card in enumerate(cards):
+        grouped[find(index)].append(card)
+    return [group for group in grouped.values() if len({fold(card["spanish"]) for card in group}) > 1]
 
 
 def disambiguate_sentences(words: list[dict], report: Counter) -> list[dict]:

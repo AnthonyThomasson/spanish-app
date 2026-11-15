@@ -2,7 +2,7 @@ import type { WordKind } from './types';
 
 /** The tags scripts/sentence_disambiguation.py adds. Keep this list in step with that module. */
 const DISAMBIGUATION_TAG =
-  /\s*\((?:vos|Ud\.|Uds\.|m\.|f\.|preterit|imperfect|pronoun before|pronoun attached|Sp\. [^()]+)\)(?=[.?!"”'’)]*$)/;
+  /\s*\((?:vos|Ud\.|Uds\.|m\.|f\.|preterit|imperfect|pronoun before|pronoun attached|Sp\. [^()]+)\)(?=[.?!"”'’)]*(?:\s+\/\s+|$))/g;
 
 /**
  * What the voice should say for a card's text. Only conjugation cards are touched: their parentheticals

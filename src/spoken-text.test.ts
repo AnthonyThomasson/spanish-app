@@ -51,6 +51,10 @@ describe('spokenText for sentence cards with a disambiguation tag', () => {
     expect(spokenText('It was good (Sp. fue buena)', 'sentence')).toBe('It was good');
   });
 
+  it('leaves out the tag of every alternative of a merged card', () => {
+    expect(spokenText('Drink (vos). / Have a drink (vos).', 'sentence')).toBe('Drink. / Have a drink.');
+  });
+
   it('keeps a sentence\'s own parentheticals, which carry meaning', () => {
     expect(spokenText('The meal is (tastes) good.', 'sentence')).toBe('The meal is (tastes) good.');
     expect(spokenText("Five (minutes) to three (o'clock).", 'sentence')).toBe("Five (minutes) to three (o'clock).");

@@ -1,9 +1,11 @@
 import unittest
 from collections import Counter
+from pathlib import Path
 
 from sentence_disambiguation import (
     classify_command,
     collision_groups,
+    FIXED_TAGS,
     disambiguate_sentences,
     insert_tag,
     tense_of,
@@ -59,6 +61,14 @@ class TenseTests(unittest.TestCase):
         self.assertEqual(tense_of("éramos"), "imperfect")
         self.assertIsNone(tense_of("cantan"))
         self.assertIsNone(tense_of("café"))
+
+
+class SpokenTextInStepTests(unittest.TestCase):
+    def test_the_app_strips_every_fixed_tag(self):
+        source = (Path(__file__).resolve().parent.parent / "src" / "spoken-text.ts").read_text()
+        for tag in FIXED_TAGS:
+            self.assertIn(tag.replace(".", "\\."), source, f"src/spoken-text.ts does not strip ({tag})")
+        self.assertIn("Sp\\. ", source)
 
 
 class DisambiguationTests(unittest.TestCase):
@@ -137,6 +147,20 @@ class DisambiguationTests(unittest.TestCase):
         cards, report = run(("Canten Uds.", "Sing."), ("Canten.", "Sing."), ("Cantá.", "Sing."))
         self.assertEqual(cards, [("Canten.", "Sing (Uds.)."), ("Cantá.", "Sing (vos).")])
         self.assertEqual(report["disambiguation.duplicates_dropped"], 1)
+
+    def test_a_merged_card_is_tagged_in_every_alternative(self):
+        cards, _ = run(
+            ("Cantá.", "Sing."), ("Cantá.", "Have a sing."), ("Cante.", "Sing."),
+        )
+        self.assertEqual(cards[0][1], "Sing (vos). / Have a sing (vos).")
+
+    def test_ustedes_spelled_out_is_a_duplicate_too(self):
+        cards, _ = run(("Canten ustedes.", "Sing."), ("Canten.", "Sing."), ("Cantá.", "Sing."))
+        self.assertEqual([spanish for spanish, _ in cards], ["Canten.", "Cantá."])
+
+    def test_este_is_not_a_preterit(self):
+        self.assertIsNone(tense_of("este"))
+        self.assertEqual(tense_of("hablaste"), "preterit")
 
     def test_no_collisions_remain(self):
         cards, _ = run(
