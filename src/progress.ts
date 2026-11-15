@@ -10,7 +10,8 @@ import type { Chapter, Direction, Word } from './types';
  *   for `hideWeeks` and resets the streak to 0.
  * - A miss (including the reveal after 3 misses) resets the streak to 0 and
  *   un-hides the word. Skip changes nothing, so there is no function for it.
- * - "Know it" hides the word right away (restarting the period if already hidden).
+ * - "Know it" hides the word right away; on an already hidden word it keeps the later of the
+ *   existing and the new hide-until date, so it never shortens a hide.
  * - While a word is hidden (reviewed via "Include hidden words") a correct answer
  *   changes nothing, so it never extends the hidden period.
  * - Once `now >= hiddenUntil` the word counts as not hidden with streak 0.
@@ -102,8 +103,14 @@ export function applyMiss(): Readonly<DirectionRecord> {
   return EMPTY;
 }
 
-export function applyKnowIt(settings: ProgressSettings, now: number): DirectionRecord {
-  return { streak: 0, hiddenUntil: now + settings.hideWeeks * WEEK_MS };
+export function applyKnowIt(
+  record: DirectionRecord | undefined,
+  settings: ProgressSettings,
+  now: number,
+): DirectionRecord {
+  // Never shorten an existing hide (e.g. after the period was lowered in settings).
+  const existing = effectiveRecord(record, now).hiddenUntil ?? 0;
+  return { streak: 0, hiddenUntil: Math.max(existing, now + settings.hideWeeks * WEEK_MS) };
 }
 
 // --- Store ---
@@ -239,9 +246,10 @@ export function createProgress(options: ProgressOptions = {}) {
       store(recordKey(chapter, word, direction), applyMiss());
     },
 
-    /** Flip cards / Auto listen: hide this word in this direction now. */
+    /** Flip cards / Auto listen: hide this word in this direction now (never shortening an existing hide). */
     knowIt(chapter: number, word: Word, direction: Direction): void {
-      store(recordKey(chapter, word, direction), applyKnowIt(settings, clock()));
+      const key = recordKey(chapter, word, direction);
+      store(key, applyKnowIt(records.get(key), settings, clock()));
     },
 
     /** Clears streaks and hidden dates for a chapter, in both directions. */

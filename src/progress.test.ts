@@ -101,6 +101,29 @@ describe('Know it', () => {
   });
 });
 
+describe('Know it on an already hidden word', () => {
+  it('never shortens the hide period', () => {
+    const { progress, clock } = setup();
+    progress.updateSettings({ hideWeeks: 10 });
+    progress.knowIt(1, gato, 'es-en');
+    const until = progress.hiddenUntil(1, gato, 'es-en');
+    progress.updateSettings({ hideWeeks: 1 });
+    clock.now += WEEK_MS;
+    progress.knowIt(1, gato, 'es-en');
+    expect(progress.hiddenUntil(1, gato, 'es-en')).toBe(until);
+  });
+
+  it('extends the hide when the new period ends later', () => {
+    const { progress, clock } = setup();
+    progress.updateSettings({ hideWeeks: 1 });
+    progress.knowIt(1, gato, 'es-en');
+    progress.updateSettings({ hideWeeks: 4 });
+    clock.now += WEEK_MS / 2;
+    progress.knowIt(1, gato, 'es-en');
+    expect(progress.hiddenUntil(1, gato, 'es-en')).toBe(clock.now + 4 * WEEK_MS);
+  });
+});
+
 describe('per-direction separation', () => {
   it('tracks streaks and hiding independently', () => {
     const { progress } = setup();
@@ -131,6 +154,18 @@ describe('reviewing hidden words', () => {
     progress.recordMiss(1, gato, 'es-en');
     expect(progress.isHidden(1, gato, 'es-en')).toBe(false);
     expect(progress.streak(1, gato, 'es-en')).toBe(0);
+  });
+});
+
+describe('a miss on an expired hidden word', () => {
+  it('leaves streak 0 and the word not hidden', () => {
+    const { progress, clock } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    clock.now += 3 * WEEK_MS;
+    progress.recordMiss(1, gato, 'es-en');
+    expect(progress.streak(1, gato, 'es-en')).toBe(0);
+    expect(progress.isHidden(1, gato, 'es-en')).toBe(false);
+    expect(progress.hiddenUntil(1, gato, 'es-en')).toBeNull();
   });
 });
 
