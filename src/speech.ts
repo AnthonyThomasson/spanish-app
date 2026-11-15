@@ -3,6 +3,7 @@ import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-communi
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
 import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
+import { chooseVoice, recognitionLanguage, speechLanguage, type Language } from './voices';
 
 export interface SpeechRecognitionAlternativeLike {
   transcript: string;
@@ -38,13 +39,26 @@ export interface SpeechRecognitionLike {
 }
 
 type RecognitionConstructor = new () => SpeechRecognitionLike;
-type Language = 'es' | 'en';
 
 declare global {
   interface Window {
     SpeechRecognition?: RecognitionConstructor;
     webkitSpeechRecognition?: RecognitionConstructor;
   }
+}
+
+let argentineUnsupported = false;
+
+/** The language tag to listen with: Argentine Spanish where the recognizer supports it. */
+export function recognitionLang(language: Language): string {
+  return recognitionLanguage(language, argentineUnsupported);
+}
+
+/** Switches Spanish recognition to es-ES after a recognizer refuses es-AR. False when already switched. */
+export function fallBackFromArgentineRecognition(): boolean {
+  if (argentineUnsupported) return false;
+  argentineUnsupported = true;
+  return true;
 }
 
 export function usingNativeSpeech(): boolean {
@@ -163,9 +177,10 @@ export class Speaker {
 
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
+      const voice = this.voiceFor(language);
+      utterance.lang = speechLanguage(language, voice);
       utterance.rate = language === 'es' ? 0.88 : 0.95;
-      utterance.voice = this.voiceFor(language);
+      utterance.voice = voice;
       utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
       window.speechSynthesis.speak(utterance);
@@ -191,7 +206,7 @@ export class Speaker {
       if (this.nativePaused || this.nativeUtterance !== utterance) return;
       await TextToSpeech.speak({
         text: utterance.text,
-        lang: utterance.language === 'es' ? 'es-ES' : 'en-US',
+        lang: speechLanguage(utterance.language, voice),
         rate: utterance.language === 'es' ? 0.88 : 0.95,
         ...(voiceIndex >= 0 ? { voice: voiceIndex } : {}),
         queueStrategy: QueueStrategy.Flush,
@@ -206,16 +221,7 @@ export class Speaker {
   }
 
   private voiceFor(language: Language): SpeechSynthesisVoice | null {
-    const matching = this.voices.filter((voice) => voice.lang.toLowerCase().startsWith(language));
-    if (language === 'es') {
-      return matching.find((voice) => voice.lang.toLowerCase().startsWith('es-mx'))
-        ?? matching.find((voice) => voice.lang.toLowerCase().startsWith('es-es'))
-        ?? matching[0]
-        ?? null;
-    }
-    return matching.find((voice) => voice.lang.toLowerCase().startsWith('en-us'))
-      ?? matching[0]
-      ?? null;
+    return chooseVoice(this.voices, language);
   }
 
   pause(): void {

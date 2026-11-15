@@ -10,7 +10,7 @@ import { RecognitionMonitor, recognitionFailureMessage, recognitionFailureNotice
 import { dispatchBackgroundAction } from './session-actions';
 import { singleFlight } from './single-flight';
 import { shouldAutoPauseWhenHidden } from './session-policy';
-import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
+import { fallBackFromArgentineRecognition, recognitionConstructor, recognitionLang, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Card, CardDirection, Chapter, Direction, Mode, Vocabulary } from './types';
 import { createWait } from './wait';
 
@@ -378,7 +378,8 @@ function showCard(): void {
   element<HTMLDivElement>('progress-bar').style.width = `${((currentIndex + 1) / deck.length) * 100}%`;
   element('prompt-label').textContent = card.direction === 'es-en' ? 'SPANISH' : 'ENGLISH';
   element('card-prompt').textContent = promptFor(card);
-  element('card-prompt').classList.toggle('long-text', promptFor(card).length > 45);
+  setTextSize(element('card-prompt'), promptFor(card));
+  setTextSize(element('card-answer'), answerFor(card));
   element('card-answer').hidden = true;
   element('card-detail').hidden = true;
   element('flip-hint').hidden = settings.mode !== 'flip';
@@ -409,6 +410,12 @@ function syncBackground(): void {
     paused,
     notice: failureNotice,
   }));
+}
+
+/** Full sentences are much longer than words: shrink the type in two steps so they fit a phone card. */
+function setTextSize(target: HTMLElement, text: string): void {
+  target.classList.toggle('long-text', text.length > 45);
+  target.classList.toggle('longer-text', text.length > 90);
 }
 
 function revealAnswer(): void {
@@ -483,7 +490,7 @@ function startListening(card: Card, token: number): void {
   const current = new Recognition();
   recognition = current;
   ownAudio.touch();
-  current.lang = answerLanguage(card) === 'es' ? 'es-ES' : 'en-US';
+  current.lang = recognitionLang(answerLanguage(card));
   current.continuous = false;
   current.interimResults = false;
   current.maxAlternatives = 5;
@@ -495,6 +502,7 @@ function startListening(card: Card, token: number): void {
   const handleRecognitionError = (error: string) => {
     // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
     if (error === 'aborted' || token !== runId || !active || paused) return;
+    if (error === 'language-not-supported' && fallBackFromArgentineRecognition()) return; // onend listens again in es-ES
     const verdict = recognitionMonitor.handle(error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
     retryDelay = recognitionMonitor.retryDelay(error);
     if (verdict === 'pause') {
@@ -516,7 +524,7 @@ function startListening(card: Card, token: number): void {
     }
     handled = true;
     recognitionMonitor.reset();
-    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card)));
+    const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card), card.word.kind));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
     void handleSpokenAnswer(correct, card, token);
   };

@@ -129,17 +129,20 @@ footer { margin-top: auto; min-height: 76px; display: flex; align-items: center;
 .flashcard:active { transform: scale(.997); }
 .card-prompt { max-width: 100%; font-family: 'Playfair Display', Georgia, serif; font-size: clamp(34px, 6vw, 54px); font-weight: 600; line-height: 1.16; letter-spacing: -1.4px; overflow-wrap: anywhere; }
 .card-prompt.long-text { font-size: clamp(27px, 4.5vw, 40px); }
+.card-answer.long-text { font-size: clamp(19px, 3.4vw, 24px); }
+.card-answer.longer-text { font-size: clamp(17px, 3vw, 20px); }
+.card-prompt.longer-text { font-size: clamp(22px, 3.6vw, 30px); letter-spacing: -.6px; }
 .card-answer { width: 100%; margin-top: 27px; padding-top: 25px; border-top: 1px solid #dfe3d8; color: var(--green); font-size: clamp(22px, 4vw, 30px); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
 .card-detail { margin-top: 10px; color: var(--muted); font-size: 11px; text-transform: capitalize; }
 .flip-hint { position: absolute; bottom: 23px; color: #989e95; font-size: 10px; letter-spacing: .5px; }
 .revealed { border-color: #9caf9e; background: #fffef9; }
 .speech-status { min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; padding-top: 15px; }
-.speech-status p { margin: 0; color: var(--muted); font-size: 12px; }
+.speech-status p { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .status-indicator { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #c5c9c0; }
 .status-indicator.speaking { background: var(--green); box-shadow: 0 0 0 4px #1f5b4614; }
 .status-indicator.listening { background: #bc6c4c; animation: pulse 1.4s infinite; }
 .status-indicator.correct { background: #52854b; }
-.heard-text { min-height: 20px; margin: -4px 0 8px; color: var(--muted); font-size: 11px; }
+.heard-text { overflow-wrap: anywhere; padding: 0 8px; min-height: 20px; margin: -4px 0 8px; color: var(--muted); font-size: 11px; }
 .session-controls { display: flex; justify-content: center; gap: 10px; margin-top: 12px; }
 .session-controls .primary { min-width: 160px; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px #bc6c4c22; } }
@@ -177,6 +180,9 @@ footer { margin-top: auto; min-height: 76px; display: flex; align-items: center;
   .card-prompt { font-size: 38px; }
   .card-prompt.long-text { font-size: 28px; }
   .card-answer { font-size: 24px; }
+  .card-prompt.longer-text { font-size: 22px; }
+  .card-answer.long-text { font-size: 20px; }
+  .card-answer.longer-text { font-size: 17px; }
   .speech-status { min-height: 65px; padding: 16px 12px 4px; }
   .speech-status p { line-height: 1.45; }
   .session-controls { margin-top: 9px; }
