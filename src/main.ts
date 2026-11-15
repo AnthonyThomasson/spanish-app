@@ -148,7 +148,6 @@ const KNOW_IT_GUARD_MS = 400;
 let deck: Card[] = [];
 let cardShownAt = 0;
 let currentIndex = 0;
-let misses = 0;
 let revealed = false;
 let paused = false;
 let active = false;
@@ -366,7 +365,6 @@ function showCard(): void {
     finishDeck();
     return;
   }
-  misses = 0;
   revealed = false;
   failureNotice = null;
   recognitionMonitor.reset();
@@ -554,21 +552,15 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
     return;
   }
 
-  misses += 1;
+  // One try per card: a wrong answer reveals and speaks the answer, then moves on.
   progress.recordMiss(card.chapter, card.word, card.direction);
-  if (misses >= 3) {
-    revealAnswer();
-    setStatus('The answer is above. Let’s keep going.');
-    await speaker.speak(answerFor(card), answerLanguage(card));
-    if (await wait(2800, token)) {
-      currentIndex += 1;
-      showCard();
-    }
-    return;
+  revealAnswer();
+  setStatus('Not quite — the answer is above. Let’s keep going.');
+  await speaker.speak(answerFor(card), answerLanguage(card));
+  if (await wait(2800, token)) {
+    currentIndex += 1;
+    showCard();
   }
-  setStatus(`Not quite — try again. ${3 - misses} ${3 - misses === 1 ? 'try' : 'tries'} before I reveal it.`);
-  await speaker.speak('Try again', 'en');
-  if (token === runId && !paused) startListening(card, token);
 }
 
 function togglePause(): void {

@@ -33,13 +33,13 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 - Select any combination of chapters, Spanish-to-English, English-to-Spanish, or Both (each card’s direction is picked at random, so the two are mixed), and shuffled or book order.
 - **Flip cards:** tap or click a card to reveal its answer.
 - **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
-- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. Three misses reveal the answer.
+- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. A wrong answer reveals and speaks the answer, then moves on to the next card (one try per card).
 
 ### Hiding mastered words
 
 Progress is saved locally (`localStorage`, also in the Android app) per word and per direction, so a word can be hidden Spanish-to-English and still be asked English-to-Spanish. If storage is unavailable the app works without saving.
 
-- In **Speak answers**, each correct answer adds to a word's streak. Reaching **Correct answers to master** (1–10, default 3) hides the word for **Hide mastered words for** (1–12 weeks, default 3). Any miss, including the reveal after three misses, resets the streak; skipping changes nothing.
+- In **Speak answers**, each correct answer adds to a word's streak. Reaching **Correct answers to master** (1–10, default 3) hides the word for **Hide mastered words for** (1–12 weeks, default 3). Any miss, including a wrong answer that reveals the answer, resets the streak; skipping changes nothing.
 - **Flip cards** and **Auto listen** have a **Know it** button that hides the word immediately and moves on.
 - Deck setup shows each chapter's hidden count (for the chosen direction) and counts only the cards that will be asked. **Include hidden words** adds them back for review: a correct answer doesn't extend the hide, and a miss un-hides the word. With **Both**, each card's direction is picked from the directions that aren't hidden, and a word hidden in both directions is left out (hidden count and summary follow). If every selected word is hidden, Start tells you when they return and offers to include them.
 - **Reset progress** on a chapter clears its streaks and hidden dates in both directions. Changing the settings applies from then on; words already hidden keep their date.

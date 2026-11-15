@@ -8,7 +8,7 @@ import type { CardDirection, Chapter, Direction, Word } from './types';
  * Rules:
  * - A correct answer adds 1 to the streak. Reaching `masterCount` hides the word
  *   for `hideWeeks` and resets the streak to 0.
- * - A miss (including the reveal after 3 misses) resets the streak to 0 and
+ * - A miss (a wrong answer, which also reveals the answer) resets the streak to 0 and
  *   un-hides the word. Skip changes nothing, so there is no function for it.
  * - "Know it" hides the word right away; on an already hidden word it keeps the later of the
  *   existing and the new hide-until date, so it never shortens a hide.
@@ -237,7 +237,7 @@ export function createProgress(options: ProgressOptions = {}) {
       store(key, applyCorrect(records.get(key), settings, clock()));
     },
 
-    /** Speak answers: any miss, including the reveal after 3 misses. Also un-hides. */
+    /** Speak answers: a wrong answer (which reveals the answer). Also un-hides. */
     recordMiss(chapter: number, word: Word, direction: CardDirection): void {
       store(recordKey(chapter, word, direction), applyMiss());
     },
