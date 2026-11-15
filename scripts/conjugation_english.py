@@ -77,11 +77,10 @@ def _be(pronoun: str) -> str:
     return "is" if pronoun in THIRD_PERSON_SINGULAR else "are"
 
 
-def conjugate_english(gloss: str, pronoun: str, reflexive: bool) -> str | None:
+def conjugate_english(gloss: str, pronoun: str) -> str | None:
     """The English card text for a pronoun and a gloss ('he has lunch'), or None when it cannot be trusted.
 
-    `reflexive` is accepted for symmetry with the Spanish side: the verb phrase is the same either way
-    ('to get up' -> 'I get up'), and 'oneself' / "one's" in a gloss follow the subject.
+    A reflexive verb's gloss is a plain verb phrase ('to get up' -> 'I get up'); 'oneself' / "one's" follow the subject.
     """
     subject = ENGLISH_SUBJECTS.get(pronoun)
     sense = first_sense(gloss)
@@ -96,3 +95,26 @@ def conjugate_english(gloss: str, pronoun: str, reflexive: bool) -> str | None:
     elif verb not in MODALS and pronoun in THIRD_PERSON_SINGULAR:
         words[0] = _third_person(verb)
     return f"{subject} {' '.join(words)}"
+
+
+# Verbs whose literal book gloss reads unnaturally, or whose usual translation is not the first sense.
+# Each entry lists the senses to offer, in order; the card shows them as ' / ' alternatives and the app
+# accepts any one. Hand-written, short and plain English: no book text.
+ENGLISH_SENSES = {
+    "almorzar": ["to have lunch"],
+    "despertarse": ["to wake up"],
+    "divertirse": ["to have a good time", "to amuse oneself"],
+    "poder": ["to be able", "can"],
+    "deber": ["should", "must"],
+    "hacer": ["to do", "to make"],
+}
+
+
+def english_prompt(infinitive: str, gloss: str, pronoun: str) -> str | None:
+    """The English for a conjugation card: the curated senses for the verb if it has them, otherwise the
+    first sense of the book's gloss. Several senses are joined with ' / ' ('I am able / I can')."""
+    senses = ENGLISH_SENSES.get(infinitive, [gloss])
+    forms = [conjugate_english(sense, pronoun) for sense in senses]
+    if None in forms:
+        return None
+    return " / ".join(forms)

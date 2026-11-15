@@ -18,7 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 from card_types import CONJUGATION, WORD, Card, ConjugationSource
-from conjugation_english import conjugate_english
+from conjugation_english import ENGLISH_SENSES, english_prompt
 from ocr_layout import IGNORED_IMAGES, clean_text, center_y
 from spanish_verbs import split_reflexive, strip_accents, tu_present_forms, verb_class, vos_present
 
@@ -129,7 +129,7 @@ def parse_header(text: str) -> dict | None:
 def clean_gloss(gloss: str) -> str:
     """The header's gloss when it is complete on one line, else '' (the word card's gloss is used instead)."""
     gloss = gloss.strip()
-    if not gloss or gloss.endswith((",", ";", "-")) or gloss.count("(") != gloss.count(")"):
+    if not gloss or gloss.endswith("-") or gloss.count("(") != gloss.count(")"):
         return ""
     return gloss
 
@@ -199,11 +199,16 @@ def read_image(observations: list[dict], report: Counter) -> tuple[list[dict], l
             and not re.match(r"^(?:I|you|he|she|we|they)\b", item["text"])
         ]
         header["inline_gloss"] = bool(header["gloss"])
-        header["gloss"] = clean_gloss(header["gloss"])
-        if below and header["gloss"]:
+        continues = header["gloss"].endswith((",", ";"))
+        if continues:
+            # "to wake up," then "to wake oneself" below: the second line is another sense, so the first stands.
+            header["gloss"] = clean_gloss(header["gloss"].rstrip(",; "))
+        elif below and header["gloss"]:
             header["gloss"] = ""  # the gloss wraps onto another line: the word card has the whole thing
         elif not header["gloss"] and len(below) == 1:
             header["gloss"] = clean_gloss(below[0]["text"]) if below[0]["text"].lower().startswith("to ") else ""
+        else:
+            header["gloss"] = clean_gloss(header["gloss"])
         header["has_gloss_line"] = bool(below) and any(item["text"].lower().startswith("to ") for item in below)
     # A lone infinitive-looking word ("lugar", a label) is a header only with a gloss, a parenthetical
     # ("cepillarse (los dientes)") or a "to ..." line under it.
@@ -385,10 +390,10 @@ def resolve(card: Card, glosses: dict[str, str], report: Counter) -> Card | None
     """Give a conjugation card its English, or None (counted) when the gloss is unknown or unusable."""
     source = card.conjugation
     gloss = source.gloss or glosses.get(source.infinitive, "")
-    if not gloss:
+    if not gloss and source.infinitive not in ENGLISH_SENSES:
         report["conjugations.cards_skipped_no_gloss"] += 1
         return None
-    english = conjugate_english(gloss, source.pronoun, split_reflexive(source.infinitive)[1])
+    english = english_prompt(source.infinitive, gloss, source.pronoun)
     if english is None:
         report["conjugations.cards_skipped_bad_gloss"] += 1
         return None
@@ -397,9 +402,13 @@ def resolve(card: Card, glosses: dict[str, str], report: Counter) -> Card | None
 
 
 def resolve_all(entries: list[tuple[int, int, Card]], glosses: dict[str, str], report: Counter) -> list[tuple[int, int, Card]]:
-    """Resolve every conjugation card of `entries` (chapter, page, card). Where two verbs in a chapter get
-    the same English ('I return' for volver and devolver; 'I am' for ser and estar) the infinitive is added
-    in parentheses, so each English prompt has one answer. The app treats a parenthetical as optional."""
+    """Resolve every conjugation card of `entries` (chapter, page, card).
+
+    Where two verbs in a chapter would give the same prompt in either language, the infinitive is added in
+    parentheses on that side: 'I return (volver)' / 'I return (devolver)' (the same English for two verbs),
+    'yo me siento (sentarse)' / 'yo me siento (sentirse)' (the same Spanish for two verbs). The app treats a
+    parenthetical as optional, and the voice does not read it.
+    """
     resolved: list[tuple[int, int, Card]] = []
     for chapter, page, card in entries:
         if card.conjugation:
@@ -407,16 +416,22 @@ def resolve_all(entries: list[tuple[int, int, Card]], glosses: dict[str, str], r
             if card is None:
                 continue
         resolved.append((chapter, page, card))
-    verbs_by_prompt: dict[tuple[int, str], set[str]] = {}
+    english_verbs: dict[tuple[int, str], set[str]] = {}
+    spanish_verbs: dict[tuple[int, str], set[str]] = {}
     for chapter, _, card in resolved:
         if card.conjugation:
-            verbs_by_prompt.setdefault((chapter, card.english), set()).add(card.conjugation.infinitive)
+            english_verbs.setdefault((chapter, card.english), set()).add(card.conjugation.infinitive)
+            spanish_verbs.setdefault((chapter, card.spanish), set()).add(card.conjugation.infinitive)
     result = []
     for chapter, page, card in resolved:
-        if card.conjugation and len(verbs_by_prompt[(chapter, card.english)]) > 1:
-            report["conjugations.prompts_disambiguated"] += 1
-            card = Card(card.spanish, f"{card.english} ({card.conjugation.infinitive})", CONJUGATION, tense=card.tense)
-        elif card.conjugation:
-            card = Card(card.spanish, card.english, CONJUGATION, tense=card.tense)
+        if card.conjugation:
+            source, spanish, english = card.conjugation, card.spanish, card.english
+            if len(english_verbs[(chapter, english)]) > 1:
+                report["conjugations.english_disambiguated"] += 1
+                english = f"{english} ({source.infinitive})"
+            if len(spanish_verbs[(chapter, spanish)]) > 1:
+                report["conjugations.spanish_disambiguated"] += 1
+                spanish = f"{spanish} ({source.infinitive})"
+            card = Card(spanish, english, CONJUGATION, tense=card.tense)
         result.append((chapter, page, card))
     return result

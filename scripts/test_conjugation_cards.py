@@ -8,6 +8,7 @@ from conjugation_cards import (
     gloss_index,
     parse_cells,
     parse_image,
+    read_image,
     resolve,
     resolve_all,
 )
@@ -264,8 +265,20 @@ class ParseImageTests(unittest.TestCase):
     def test_gloss_from_the_header_only_when_complete(self):
         cards, _ = cards_of(image("p100_00.png", block("folmar to blorp (a wibble)", FOLMAR)))
         self.assertEqual(cards[0].conjugation.gloss, "to blorp (a wibble)")
-        cards, _ = cards_of(image("p100_00.png", block("folmar to blorp,", FOLMAR)))
+        cards, _ = cards_of(image("p100_00.png", block("folmar to blorp (a wibble", FOLMAR)))
         self.assertEqual(cards[0].conjugation.gloss, "")
+
+    def test_a_gloss_ending_in_a_comma_keeps_its_first_sense_and_ignores_the_line_below(self):
+        items = block("folmar to blorp,", FOLMAR) + [obs("to zint oneself", 0.0, 0.89)]
+        cards, _ = cards_of(image("p275_00.png", items))
+        self.assertEqual(cards[0].conjugation.gloss, "to blorp")
+        items = block("folmar to blorp;", FOLMAR)
+        self.assertEqual(cards_of(image("p275_00.png", items))[0][0].conjugation.gloss, "to blorp")
+
+    def test_the_line_below_is_the_gloss_only_when_the_header_has_none(self):
+        items = block("folmarse (los wibbles)", FOLMAR, top=0.95)[:1] + [obs("to blorp oneself", 0.0, 0.89)]
+        headers, _ = read_image(items + [obs("yo me folmo", 0.0, 0.7)], Counter())
+        self.assertEqual(headers[0]["gloss"], "to blorp oneself")
 
     def test_a_gloss_wrapped_onto_the_next_line_is_left_to_the_word_card(self):
         items = block("folmar to blorp", FOLMAR) + [obs("up and down", 0.0, 0.89)]
@@ -282,8 +295,8 @@ class ParseImageTests(unittest.TestCase):
         img = image("p400_00.png", block("folmar to blorp", FOLMAR))
         self.assertEqual(parse_image({**img, "chapter": 15}, Counter()), [])
         sentences = image("p139_00.png", [
-            obs("tratar de + infinitive to try to", 0.0, 0.95),
-            obs("yo trato de leer", 0.05, 0.8), obs("nosotros tratamos de escribir", 0.05, 0.6),
+            obs("folmar a + infinitive to blorp (something)", 0.0, 0.95),
+            obs("yo folmo a tumer", 0.05, 0.8), obs("nosotros folmamos a ristir", 0.05, 0.6),
         ])
         self.assertEqual(cards_of(sentences)[0], [])
 
@@ -377,7 +390,24 @@ class ResolveTests(unittest.TestCase):
         report = Counter()
         english = [card.english for _, _, card in resolve_all(entries, {}, report)]
         self.assertEqual(english, ["I blorp"] * 3)
-        self.assertEqual(report["conjugations.prompts_disambiguated"], 0)
+        self.assertEqual(report["conjugations.english_disambiguated"], 0)
+
+    def test_verbs_with_the_same_spanish_in_a_chapter_get_the_infinitive_on_the_spanish_side(self):
+        entries = [
+            (12, 275, self.conj("folmarse", "yo", "to blorp up", "yo me folmo")),
+            (12, 282, self.conj("tumerse", "yo", "to zint", "yo me folmo")),
+            (12, 282, self.conj("tumerse", "ella", "to zint", "ella se tume")),
+        ]
+        report = Counter()
+        result = [(card.spanish, card.english) for _, _, card in resolve_all(entries, {}, report)]
+        self.assertEqual(result, [
+            ("yo me folmo (folmarse)", "I blorp up"), ("yo me folmo (tumerse)", "I zint"), ("ella se tume", "she zints"),
+        ])
+        self.assertEqual(report["conjugations.spanish_disambiguated"], 2)
+
+    def test_curated_verbs_need_no_gloss(self):
+        card = resolve(self.conj("poder", "ella", "", "ella puede"), {}, Counter())
+        self.assertEqual(card.english, "she is able / she can")
 
     def test_resolved_cards_no_longer_carry_a_conjugation_source(self):
         entries = [(5, 100, self.conj())]
@@ -434,7 +464,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(stats["cardsByChapter"]["5"]["conjugation"], 9)
 
     def test_gloss_recovered_from_an_infinitive_word_card(self):
-        header_only = [obs("folmar to blorp,", 0.0, 0.95)] + block("folmar", FOLMAR)[1:]
+        header_only = [obs("folmar to blorp", 0.0, 0.95), obs("up and down", 0.0, 0.89)] + block("folmar", FOLMAR)[1:]
         words = [two_column_words()]
         vocabulary, stats = self.run_pipeline(words + [image("p105_00.png", header_only)])
         conjugations = [w for w in vocabulary["chapters"][4]["words"] if w.get("kind") == "conjugation"]

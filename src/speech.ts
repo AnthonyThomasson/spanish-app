@@ -3,6 +3,7 @@ import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-communi
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
 import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
+import { spokenText } from './spoken-text';
 import { chooseVoice, RecognitionLanguages, speechLanguage, type Language } from './voices';
 
 export interface SpeechRecognitionAlternativeLike {
@@ -189,7 +190,7 @@ export class Speaker {
 
   speak(text: string, language: Language): Promise<void> {
     const end = ownAudio.begin(); // the TTS engine takes audio focus; see own-audio.ts
-    return this.play(text, language).finally(end);
+    return this.play(spokenText(text), language).finally(end);
   }
 
   private play(text: string, language: Language): Promise<void> {

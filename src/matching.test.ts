@@ -71,6 +71,22 @@ describe('sentence matching: alternatives', () => {
     expect(isCorrectAnswer('think', 'vos pensás', 'conjugation')).toBe(false);
   });
 
+  it('treats the infinitive note on a Spanish conjugation prompt as optional', () => {
+    expect(isCorrectAnswer('yo me siento', 'yo me siento (sentarse)', 'conjugation', 'es')).toBe(true);
+    expect(isCorrectAnswer('me siento', 'yo me siento (sentarse)', 'conjugation', 'es')).toBe(true);
+    expect(isCorrectAnswer('yo me siento sentarse', 'yo me siento (sentarse)', 'conjugation', 'es')).toBe(true);
+    expect(isCorrectAnswer('yo me sientas', 'yo me siento (sentarse)', 'conjugation', 'es')).toBe(false);
+  });
+
+  it('accepts either alternative of a curated English conjugation prompt', () => {
+    const expected = 'she is able / she can';
+    expect(isCorrectAnswer('she is able', expected, 'conjugation', 'en')).toBe(true);
+    expect(isCorrectAnswer('she can', expected, 'conjugation', 'en')).toBe(true);
+    expect(isCorrectAnswer('she cans', expected, 'conjugation', 'en')).toBe(false);
+    expect(isCorrectAnswer('she makes', 'she does / she makes (hacer)', 'conjugation', 'en')).toBe(true);
+    expect(isCorrectAnswer('she does', 'she does / she makes (hacer)', 'conjugation', 'en')).toBe(true);
+  });
+
   it('does not accept an empty answer', () => {
     expect(isCorrectAnswer('', 'we eat', 'sentence')).toBe(false);
     expect(isCorrectAnswer('   ', 'we eat', 'conjugation')).toBe(false);
