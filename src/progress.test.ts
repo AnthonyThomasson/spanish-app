@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createProgress,
+  directionsFor,
   DEFAULT_SETTINGS,
   STORAGE_KEY,
   WEEK_MS,
@@ -223,6 +224,74 @@ describe('deck filtering', () => {
     expect(progress.buildDeck([chapter1], 'es-en', false)).toHaveLength(2);
     expect(progress.hiddenCount(chapter1, 'es-en')).toBe(0);
     expect(progress.earliestHiddenUntil([chapter1], 'es-en')).toBeNull();
+  });
+});
+
+describe('Both direction', () => {
+  it('covers both card directions', () => {
+    expect(directionsFor('both')).toEqual(['es-en', 'en-es']);
+    expect(directionsFor('es-en')).toEqual(['es-en']);
+  });
+
+  it('offers only the directions that are not hidden', () => {
+    const { progress } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    progress.knowIt(1, perro, 'en-es');
+    const deck = progress.buildDeck([chapter1, chapter2], 'both', false);
+    expect(deck.map((card) => [card.word, card.directions])).toEqual([
+      [gato, ['en-es']],
+      [perro, ['es-en']],
+      [casa, ['es-en', 'en-es']],
+    ]);
+  });
+
+  it('leaves out a word hidden in both directions, unless hidden words are included', () => {
+    const { progress } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    progress.knowIt(1, gato, 'en-es');
+    expect(progress.buildDeck([chapter1], 'both', false).map((card) => card.word)).toEqual([perro]);
+    const included = progress.buildDeck([chapter1], 'both', true);
+    expect(included.map((card) => card.word)).toEqual([gato, perro]);
+    expect(included[0].directions).toEqual(['es-en', 'en-es']);
+  });
+
+  it('counts as hidden only the words hidden in both directions', () => {
+    const { progress } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    progress.knowIt(1, perro, 'es-en');
+    progress.knowIt(1, perro, 'en-es');
+    expect(progress.hiddenCount(chapter1, 'both')).toBe(1);
+    expect(progress.hiddenCount(chapter1, 'es-en')).toBe(2);
+  });
+
+  it('counts the cards that will actually be asked', () => {
+    const { progress } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    progress.knowIt(1, perro, 'es-en');
+    progress.knowIt(1, perro, 'en-es');
+    expect(progress.cardCount([chapter1, chapter2], 'both', false)).toBe(2);
+    expect(progress.cardCount([chapter1, chapter2], 'both', true)).toBe(3);
+  });
+
+  it('reports the earliest date at which any direction of any selected word comes back', () => {
+    const { progress, clock } = setup();
+    progress.knowIt(1, gato, 'es-en');
+    clock.now += 1000;
+    progress.knowIt(1, gato, 'en-es');
+    clock.now += 1000;
+    progress.knowIt(1, perro, 'es-en');
+    progress.knowIt(1, perro, 'en-es');
+    expect(progress.earliestHiddenUntil([chapter1], 'both')).toBe(1_000_000 + 3 * WEEK_MS);
+    expect(progress.earliestHiddenUntil([chapter1], 'en-es')).toBe(1_001_000 + 3 * WEEK_MS);
+  });
+
+  it('keeps progress separate per card direction', () => {
+    const { progress } = setup();
+    progress.recordCorrect(1, gato, 'es-en');
+    progress.recordCorrect(1, gato, 'es-en');
+    progress.recordCorrect(1, gato, 'en-es');
+    expect(progress.streak(1, gato, 'es-en')).toBe(2);
+    expect(progress.streak(1, gato, 'en-es')).toBe(1);
   });
 });
 
