@@ -30,7 +30,7 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 
 ## Practice modes
 
-- Select any combination of chapters, Spanish-to-English or English-to-Spanish, and shuffled or book order.
+- Select any combination of chapters, Spanish-to-English, English-to-Spanish, or Both (each card’s direction is picked at random, so the two are mixed), and shuffled or book order.
 - **Flip cards:** tap or click a card to reveal its answer.
 - **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
 - **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. Three misses reveal the answer.
