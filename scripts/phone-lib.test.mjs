@@ -6,6 +6,7 @@ import {
   findFreePort,
   buildApkUrl,
   contentTypeFor,
+  needsInstall,
 } from './phone-lib.mjs'
 
 const iface = (address, extra = {}) => ({ address, family: 'IPv4', internal: false, ...extra })
@@ -76,4 +77,13 @@ test('contentTypeFor serves apk, png and falls back to octet-stream', () => {
   assert.equal(contentTypeFor('spanish-app.apk'), 'application/vnd.android.package-archive')
   assert.equal(contentTypeFor('qr.png'), 'image/png')
   assert.equal(contentTypeFor('mystery.bin'), 'application/octet-stream')
+})
+
+test('needsInstall is true without node_modules or without qrcode', () => {
+  assert.equal(needsInstall(() => false), true)
+  assert.equal(needsInstall((p) => p === 'node_modules'), true)
+})
+
+test('needsInstall is false when qrcode is installed', () => {
+  assert.equal(needsInstall(() => true), false)
 })

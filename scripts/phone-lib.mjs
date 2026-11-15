@@ -51,3 +51,8 @@ const CONTENT_TYPES = {
 export function contentTypeFor(file) {
   return CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream'
 }
+
+// `npm ci` is needed when node_modules is absent or predates the qrcode devDependency.
+export function needsInstall(exists) {
+  return !exists('node_modules') || !exists(path.join('node_modules', 'qrcode'))
+}

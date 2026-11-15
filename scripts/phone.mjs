@@ -13,6 +13,7 @@ import {
   contentTypeFor,
   findFreePort,
   mainCheckoutFromGitCommonDir,
+  needsInstall,
   pickLanAddress,
 } from './phone-lib.mjs'
 
@@ -30,10 +31,16 @@ const run = (command, args) => {
 }
 
 // (a) dependencies
-if (!fs.existsSync('node_modules')) {
-  console.log('phone: node_modules missing, running npm ci')
+if (needsInstall(fs.existsSync)) {
+  console.log('phone: node_modules or qrcode missing, running npm ci')
   if (!run('npm', ['ci'])) fail('npm ci failed')
 }
+
+// Fail fast, before the multi-minute build: qrcode must load and the Mac needs a LAN address.
+const { default: QRCode } = await import('qrcode')
+
+const ip = pickLanAddress(os.networkInterfaces())
+if (!ip) fail('could not find a Wi-Fi/LAN IPv4 address. Connect the Mac to the same network as the phone.')
 
 // (b) vocabulary (gitignored, copied from the main checkout when this is a worktree)
 const vocab = path.join('data', 'vocab.json')
@@ -59,13 +66,6 @@ if (!fs.existsSync(vocab)) {
 
 // (c) build
 if (!run('npm', ['run', 'android:apk'])) fail('npm run android:apk failed')
-
-// qrcode is a devDependency, so it can only be loaded once step (a) has installed it.
-const { default: QRCode } = await import('qrcode')
-
-// (d) LAN address
-const ip = pickLanAddress(os.networkInterfaces())
-if (!ip) fail('could not find a Wi-Fi/LAN IPv4 address. Connect the Mac to the same network as the phone.')
 
 // (e) serve release/ over HTTP (only the APK and QR image, nothing else in the folder)
 const releaseDir = path.join(root, 'release')
