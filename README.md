@@ -20,6 +20,10 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 
    The script uses `pypdf` to extract the embedded table images and macOS Vision to OCR them. It writes `data/vocab.json`; OCR intermediates go in `extraction/`. Both paths are ignored by Git. Use `--refresh-ocr` to run recognition again instead of using the cached OCR output.
 
+   Besides the word tables, the extractor emits example sentences (`kind: "sentence"`), `vos` commands, number words, interrogatives and section lists. The deck is Argentine: second-person (`tú`/`vosotros`) sentences are converted to `vos`/`ustedes` when the form is certain and dropped otherwise, and a curated word map (coche → auto, zumo → jugo…) is applied to the Spanish side. Each card type lives in its own module and is registered in `scripts/card_parsers.py`.
+
+   Python tests for the extractor use invented text and synthetic OCR only; run them with `python3 -m unittest discover -s scripts -p "test_*.py"` (or `uv run --with pytest pytest scripts`).
+
 3. Start the app:
 
    ```sh
