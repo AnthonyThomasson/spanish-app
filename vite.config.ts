@@ -1,13 +1,11 @@
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 
 const vocabPath = resolve(__dirname, 'data/vocab.json');
 
 export default defineConfig(({ mode }) => ({
-  // node --test runs scripts/*.test.mjs separately; Vitest only covers src.
-  test: { include: ['src/**/*.test.ts'] },
   plugins: [
     ...(mode === 'phone' ? [basicSsl()] : []),
     {
