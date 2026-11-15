@@ -27,7 +27,35 @@ class ArgentineMapTests(unittest.TestCase):
     def test_verbs_follow_the_whole_conjugation(self):
         self.assertEqual(argentinize("Quiero conducir."), "Quiero manejar.")
         self.assertEqual(argentinize("Ella conduce rápido."), "Ella maneja rápido.")
-        self.assertEqual(argentinize("Cojo un resfriado."), "Agarro un resfriado.")
+        self.assertEqual(argentinize("Ella coge la pelota."), "Ella agarra la pelota.")
+
+    def test_subjunctive_of_coger_is_never_mapped(self):
+        # "cojo/coja" is also the adjective "lame".
+        for text in ("El perro cojo corre.", "Quiero que coja el balón.", "Una mesa coja."):
+            self.assertEqual(argentinize(text), text)
+
+    def test_gloss_blocks_the_wrong_sense(self):
+        self.assertEqual(argentinize("el carro", "the car"), "el auto")
+        self.assertEqual(argentinize("el carro de compras", "the shopping cart"), "el carro de compras")
+        self.assertEqual(argentinize("la banqueta", "the stool"), "la banqueta")
+        self.assertEqual(argentinize("la banqueta", "the sidewalk"), "la vereda")
+        self.assertEqual(argentinize("conducir", "to conduct"), "conducir")
+        self.assertEqual(argentinize("conducir", "to drive"), "manejar")
+        self.assertEqual(argentinize("Ella conduce la orquesta.", "She conducts the orchestra."), "Ella conduce la orquesta.")
+
+    def test_gender_changing_swaps_are_skipped_in_sentences(self):
+        text = "Encontré los gafas viejos."
+        self.assertEqual(argentinize("Perdí las gafas y las encontré.", "I lost the glasses and found them.", "sentence"),
+                         "Perdí las gafas y las encontré.")
+        self.assertEqual(argentinize("las gafas", "the glasses", "word"), "los anteojos")
+        self.assertEqual(argentinize("el aguacate", "the avocado", "sentence"), "el aguacate")
+
+    def test_multiword_replacement_pluralises_only_the_head(self):
+        self.assertEqual(argentinize("las gasolineras", "the gas stations"), "las estaciones de servicio")
+
+    def test_school_bus_and_peanuts(self):
+        self.assertEqual(argentinize("el autobús escolar", "the school bus"), "el autobús escolar")
+        self.assertEqual(argentinize("los cacahuetes", "the peanuts"), "los maníes")
 
     def test_coger_with_transport_becomes_tomar(self):
         self.assertEqual(argentinize("Quiero coger el autobús."), "Quiero tomar el colectivo.")

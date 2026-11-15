@@ -84,22 +84,22 @@ class SentenceImageTests(unittest.TestCase):
         self.assertEqual([c.english for c in cards], ["I am fine.", "How are you?", "The table is big."])
 
     def test_missing_inverted_question_mark_is_restored(self):
-        cards, _ = parse(two_columns([("Dónde vives?", "Where do you live?")]))
-        self.assertEqual(cards[0].spanish, "¿Dónde vives?")
+        cards, _ = parse(two_columns([("Dónde duerme el loro?", "Where does the parrot sleep?")]))
+        self.assertEqual(cards[0].spanish, "¿Dónde duerme el loro?")
 
     def test_headings_and_bullets_are_ignored(self):
         img = image("p050_00.png", [
             obs("•", 0.0, 0.95, 0.02),
             obs("Health", 0.03, 0.95, 0.15),
-            obs("Ella está enferma.", 0.05, 0.8),
-            obs("She is sick.", 0.6, 0.8),
+            obs("Zorba pinta la cerca.", 0.05, 0.8),
+            obs("Zorba paints the fence.", 0.6, 0.8),
         ])
         cards, _ = parse(img)
-        self.assertEqual([(c.spanish, c.english) for c in cards], [("Ella está enferma.", "She is sick.")])
+        self.assertEqual([(c.spanish, c.english) for c in cards], [("Zorba pinta la cerca.", "Zorba paints the fence.")])
 
     def test_rows_with_several_sentences_are_split_when_counts_match(self):
-        cards, _ = parse(two_columns([("Cantemos. Bailemos.", "Let's sing. Let's dance.")]))
-        self.assertEqual([(c.spanish, c.english) for c in cards], [("Cantemos.", "Let's sing."), ("Bailemos.", "Let's dance.")])
+        cards, _ = parse(two_columns([("Saltemos. Riamos.", "Let's jump. Let's laugh.")]))
+        self.assertEqual([(c.spanish, c.english) for c in cards], [("Saltemos.", "Let's jump."), ("Riamos.", "Let's laugh.")])
 
     def test_conjugation_tables_are_skipped(self):
         img = image("p120_00.png", [
@@ -108,11 +108,62 @@ class SentenceImageTests(unittest.TestCase):
         self.assertEqual(parse(img)[0], [])
 
     def test_names_with_accents_in_english_are_fine(self):
-        cards, _ = parse(two_columns([("María llega temprano.", "María arrives early.")]))
+        cards, _ = parse(two_columns([("Zulema llega temprano.", "Zulema arrives early.")]))
         self.assertEqual(len(cards), 1)
 
     def test_english_function_word_in_spanish_side_is_rejected(self):
-        cards, _ = parse(two_columns([("Nosotros íbamos a comprar in carro.", "We were going to buy a car.")]))
+        cards, _ = parse(two_columns([("Nosotros íbamos a pintar in cerca.", "We were going to paint a fence.")]))
+        self.assertEqual(cards, [])
+
+    def test_headings_and_labels_are_rejected_explicitly(self):
+        for spanish, english in [
+            ("El zorro come uvas.", "English Construction"),
+            ("El zorro come uvas.", "NOTE: the fox eats grapes."),
+            ("El zorro come uvas.", "Present Tense"),
+            ("El zorro come uvas.", "EXAMPLE The fox eats grapes."),
+        ]:
+            cards, report = parse(two_columns([(spanish, english)]))
+            self.assertEqual(cards, [], english)
+
+    def test_side_specific_ocr_corrections(self):
+        cards, _ = parse(two_columns([
+            ("Es imposible dormir aquí.", "It is imposible to sleep here."),
+            ("Yo vi el cohete ayer.", "I sau the rocket yesterday."),
+            ("Ellos tienen su propio perro.", "They have their oun dog."),
+        ]))
+        self.assertEqual([(c.spanish, c.english) for c in cards], [
+            ("Es imposible dormir aquí.", "It is impossible to sleep here."),
+            ("Yo vi el cohete ayer.", "I saw the rocket yesterday."),
+            ("Ellos tienen su propio perro.", "They have their own dog."),
+        ])
+
+    def test_spanish_side_slips_and_stray_marks(self):
+        cards, _ = parse(two_columns([
+            ("Cada apartmento tiene un balcón®.", "Each flat has a balcony."),
+            ("La luna sale.., y brilla.", "The moon rises, and shines."),
+        ]))
+        self.assertEqual(cards[0].spanish, "Cada apartamento tiene un balcón.")
+        self.assertNotIn("..", cards[1].spanish)
+
+    def test_doubled_punctuation_is_collapsed(self):
+        cards, _ = parse(two_columns([("Apagá la luz..", "Turn off the light.")]))
+        self.assertEqual(cards[0].spanish, "Apagá la luz.")
+
+    def test_terminal_punctuation_is_copied_to_the_other_side(self):
+        cards, _ = parse(two_columns([("El loro habla mucho", "The parrot talks a lot.")]))
+        self.assertEqual((cards[0].spanish, cards[0].english), ("El loro habla mucho.", "The parrot talks a lot."))
+
+    def test_cut_off_pairs_are_dropped(self):
+        for spanish, english in [
+            ("No sé si el loro come si", "I don't know if the parrot eats if"),
+            ("El pez nada en este", "The fish swims in this"),
+            ("Quiero que", "I want that"),
+        ]:
+            cards, _ = parse(two_columns([(spanish, english)]))
+            self.assertEqual(cards, [], spanish)
+
+    def test_garbled_english_is_dropped(self):
+        cards, _ = parse(two_columns([("¿Dónde duerme el loro?", "Where does the parrot sleep'?")]))
         self.assertEqual(cards, [])
 
 

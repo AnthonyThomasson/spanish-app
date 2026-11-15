@@ -132,6 +132,10 @@ def parse_number_table(image: dict, report: Counter) -> list[Card]:
     for item, value in unchecked:
         if any(abs(item["x"] - column) <= 0.03 for column in checked_columns):
             cards.append(number_card(clean_text(item["text"]), value, report))
+    # The book lists "ciento" where it means 100 and the plain "cien" is often absent from the table.
+    values = {spanish_number_value(card.spanish) for card in cards}
+    if {200, 300} <= values and 100 not in values and not any(card.spanish == "cien" for card in cards):
+        cards.append(number_card("cien", 100, report))
     return cards
 
 

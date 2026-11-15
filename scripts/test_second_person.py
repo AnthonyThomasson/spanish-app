@@ -6,7 +6,7 @@ LEXICON = Lexicon()
 for infinitive, gloss in {
     "hablar": "to speak", "escribir": "to write", "sentar": "to sit (down)", "lavar": "to wash",
     "comer": "to eat", "pensar": "to think", "mirar": "to look at", "cerrar": "to close", "beber": "to drink",
-    "divertir": "to amuse", "bailar": "to dance",
+    "divertir": "to amuse", "bailar": "to dance", "cantar": "to sing", "pintar": "to paint", "dormir": "to sleep",
 }.items():
     LEXICON.add(infinitive, gloss)
 for infinitive, gloss in {"ser": "to be", "estar": "to be", "ir": "to go", "tener": "to have", "hacer": "to do", "venir": "to come", "poder": "can"}.items():
@@ -19,17 +19,17 @@ def run(spanish, english):
 
 class TuToVosTests(unittest.TestCase):
     def test_pronoun_and_verb(self):
-        outcome = run("¿Hablas tú español?", "Do you speak Spanish?")
-        self.assertEqual((outcome.status, outcome.spanish), ("converted", "¿Hablás vos español?"))
+        outcome = run("¿Cantas tú bien?", "Do you sing well?")
+        self.assertEqual((outcome.status, outcome.spanish), ("converted", "¿Cantás vos bien?"))
 
     def test_irregular_and_stem_changing_verbs(self):
-        self.assertEqual(run("Tú eres alto.", "You are tall.").spanish, "Vos sos alto.")
-        self.assertEqual(run("¿Piensas en mí?", "Do you think of me?").spanish, "¿Pensás en mí?")
-        self.assertEqual(run("¿Puedes venir?", "Can you come?").spanish, "¿Podés venir?")
+        self.assertEqual(run("Tú eres un dragón.", "You are a dragon.").spanish, "Vos sos un dragón.")
+        self.assertEqual(run("¿Pensás en mí?", "Do you think of me?").spanish, "¿Pensás en mí?")
+        self.assertEqual(run("¿Puedes volar?", "Can you fly?").spanish, "¿Podés volar?")
 
     def test_tu_forms_that_equal_vos_are_kept(self):
-        outcome = run("¿Estás cansado?", "Are you tired?")
-        self.assertEqual((outcome.status, outcome.spanish), ("unchanged", "¿Estás cansado?"))
+        outcome = run("¿Estás mojado?", "Are you wet?")
+        self.assertEqual((outcome.status, outcome.spanish), ("unchanged", "¿Estás mojado?"))
         self.assertEqual(run("¿Qué comiste?", "What did you eat?").status, "unchanged")
 
     def test_contigo_becomes_con_vos(self):
@@ -46,7 +46,7 @@ class TuToVosTests(unittest.TestCase):
         self.assertEqual((outcome.status, outcome.reason), ("dropped", "unverified_second_person"))
 
     def test_formal_sentences_are_untouched(self):
-        self.assertEqual(run("¿Habla Ud. español?", "Do you speak Spanish?").status, "unchanged")
+        self.assertEqual(run("¿Canta Ud. bien?", "Do you sing well?").status, "unchanged")
 
     def test_nouns_that_look_like_tu_verbs_are_not_converted(self):
         outcome = run("Las cuentas son altas.", "The bills are high.")
@@ -58,73 +58,140 @@ class TuToVosTests(unittest.TestCase):
 
 class ImperativeTests(unittest.TestCase):
     def test_tu_commands_become_vos_commands(self):
-        self.assertEqual(run("Escribe la carta.", "Write the letter.").spanish, "Escribí la carta.")
+        self.assertEqual(run("Pinta la cerca.", "Paint the fence.").spanish, "Pintá la cerca.")
         self.assertEqual(run("Ven acá.", "Come here.").spanish, "Vení acá.")
-        self.assertEqual(run("Haz tu tarea.", "Do your homework.").spanish, "Hacé tu tarea.")
+        self.assertEqual(run("Haz tu dibujo.", "Do your drawing.").spanish, "Hacé tu dibujo.")
 
     def test_attached_pronouns(self):
-        self.assertEqual(run("Escríbeme la carta.", "Write the letter to me.").spanish, "Escribime la carta.")
-        self.assertEqual(run("Lávate las manos.", "Wash your hands.").spanish, "Lavate las manos.")
-        self.assertEqual(run("Siéntate aquí.", "Sit down here.").spanish, "Sentate aquí.")
+        self.assertEqual(run("Píntame la cerca.", "Paint the fence for me.").spanish, "Pintame la cerca.")
+        self.assertEqual(run("Lávate las botas.", "Wash your boots.").spanish, "Lavate las botas.")
+        self.assertEqual(run("Siéntate allá.", "Sit down there.").spanish, "Sentate allá.")
 
     def test_statements_that_look_like_commands_are_kept(self):
         self.assertEqual(run("Come mucho.", "He eats a lot.").status, "unchanged")
         self.assertEqual(run("Se lo doy.", "I give it to him.").status, "unchanged")
 
     def test_command_with_unknown_verb_and_pronoun_is_dropped(self):
-        self.assertEqual(run("Cuéntame la historia.", "Tell me the story.").status, "dropped")
+        self.assertEqual(run("Ordénamelo ya.", "Sort it for me now.").status, "dropped")
 
     def test_nosotros_commands_are_not_mistaken_for_tu_commands(self):
         self.assertEqual(run("Comprémoselo.", "Let's buy it for her.").status, "unchanged")
 
     def test_formal_commands_are_untouched(self):
-        self.assertEqual(run("Escriba la carta.", "Write the letter.").status, "unchanged")
+        self.assertEqual(run("Pinte la cerca.", "Paint the fence.").status, "unchanged")
 
 
 class VosotrosTests(unittest.TestCase):
     def test_regular_present_becomes_ustedes(self):
-        outcome = run("Vosotros habláis español.", "You all speak Spanish.")
-        self.assertEqual((outcome.status, outcome.spanish), ("converted", "Ustedes hablan español."))
+        outcome = run("Vosotros cantáis bien.", "You all sing well.")
+        self.assertEqual((outcome.status, outcome.spanish), ("converted", "Ustedes cantan bien."))
 
     def test_commands_and_possessives(self):
-        self.assertEqual(run("Mirad.", "Look.").spanish, "Miren.")
+        self.assertEqual(run("Cantad.", "Sing.").spanish, "Canten.")
         self.assertEqual(run("No bailéis aquí.", "Don't dance here.").spanish, "No bailen aquí.")
-        self.assertEqual(run("Vuestro amigo es alto.", "Your friend is tall.").spanish, "Su amigo es alto.")
+        self.assertEqual(run("Vuestro loro es verde.", "Your parrot is green.").spanish, "Su loro es verde.")
 
     def test_uncertain_vosotros_is_dropped(self):
         for spanish, english in [
-            ("Cerrad la puerta.", "Close the door."),
-            ("Os veo mañana.", "I see you tomorrow."),
-            ("Los amigos vuestros viven aquí.", "Your friends live here."),
+            ("Cerrad la jaula.", "Close the cage."),
+            ("Os pinto mañana.", "I paint you tomorrow."),
+            ("Los loros vuestros viven aquí.", "Your parrots live here."),
             ("Divertíos mucho.", "Have a good time."),
-            ("Leedlo.", "Read it."),
-            ("Vosotros sois estudiantes.", "You all are students."),
-            ("Vosotros vivís en Madrid.", "You all live in Madrid."),
+            ("Pintadlo.", "Paint it."),
+            ("Vosotros sois dragones.", "You all are dragons."),
+            ("Vosotros dormís en la cueva.", "You all sleep in the cave."),
         ]:
             self.assertEqual(run(spanish, english).status, "dropped", spanish)
 
 
+class VosotrosLeakTests(unittest.TestCase):
+    def test_os_attached_to_infinitives_and_commands(self):
+        for spanish, english in [
+            ("Quiero pintaros una cerca.", "I want to paint you a fence."),
+            ("Mandároslos es fácil.", "Sending them to you is easy."),
+            ("Bañaos ahora.", "Take a bath now."),
+            ("Ponéosla ya.", "Put it on now."),
+        ]:
+            self.assertEqual(run(spanish, english).status, "dropped", spanish)
+
+    def test_nouns_ending_in_os_are_not_mistaken(self):
+        self.assertEqual(run("Los museos están cerrados.", "The museums are closed.").status, "unchanged")
+        self.assertEqual(run("Mis tíos duermen.", "My uncles sleep.").status, "unchanged")
+
+    def test_other_vosotros_endings_are_dropped(self):
+        for spanish, english in [
+            ("Vosotros cantabais mucho.", "You all sang a lot."),
+            ("Vosotros teníais un loro.", "You all had a parrot."),
+            ("Vosotros cantasteis ayer.", "You all sang yesterday."),
+            ("Vosotros dormisteis bien.", "You all slept well."),
+            ("Si vosotros cantarais, bailaría.", "If you all sang, I would dance."),
+            ("Si vosotros durmierais, soñaría.", "If you all slept, I would dream."),
+        ]:
+            self.assertEqual(run(spanish, english).status, "dropped", spanish)
+
+    def test_vuestro_after_es_becomes_de_ustedes(self):
+        outcome = run("El loro es vuestro.", "The parrot is yours.")
+        self.assertEqual((outcome.status, outcome.spanish), ("converted", "El loro es de ustedes."))
+        self.assertEqual(run("Es vuestro porque sí y más.", "It is yours, period.").status, "dropped")
+
+
+class TuLeakTests(unittest.TestCase):
+    def test_dont_you_and_do_you_trigger_conversion(self):
+        self.assertEqual(run("¿Por qué no vienes acá?", "Why don't you come here?").spanish, "¿Por qué no venís acá?")
+        self.assertEqual(run("¿Duermes en la cueva?", "Do you sleep in the cave?").spanish, "¿Dormís en la cueva?")
+
+    def test_ti_after_a_preposition_is_converted(self):
+        self.assertEqual(run("Pinto la cerca por ti.", "I paint the fence for you.").spanish, "Pinto la cerca por vos.")
+        self.assertEqual(run("A ti te gusta el queso.", "The cheese pleases you.").spanish, "A vos te gusta el queso.")
+
+    def test_tu_reflexive_verbs_without_you_in_english(self):
+        self.assertEqual(run("Te llamas Zorba.", "Your name is Zorba.").status, "dropped")
+        self.assertEqual(run("¿Cómo te sientes?", "How are you feeling?").status, "dropped")
+
+    def test_ocr_slipped_imperative_is_dropped(self):
+        self.assertEqual(run("Enséñanosa.", "Show us.").status, "dropped")
+
+    def test_ojala_is_not_an_imperative(self):
+        self.assertEqual(run("Ojalá que llueva.", "I hope it rains.").status, "unchanged")
+        self.assertEqual(run("Además llueve.", "Besides, it rains.").status, "unchanged")
+
+
 class WordCardTests(unittest.TestCase):
     def test_pronouns_after_prepositions_and_alone(self):
-        from second_person import convert_word_card as convert
+        from second_person import convert_word_card
+        convert = lambda spanish, english="": convert_word_card(spanish, english)[0]
         self.assertEqual(convert("tú"), "vos")
-        self.assertEqual(convert("según tú"), "según vos")
-        self.assertEqual(convert("para ti"), "para vos")
+        self.assertEqual(convert("excepto tú"), "excepto vos")
+        self.assertEqual(convert("sin ti"), "sin vos")
         self.assertEqual(convert("vosotros"), "ustedes")
         self.assertEqual(convert("entre vosotras y yo"), "entre ustedes y yo")
 
     def test_contigo_and_unsafe_cards_stay(self):
-        from second_person import convert_word_card as convert
+        from second_person import convert_word_card
+        convert = lambda spanish, english="": convert_word_card(spanish, english)[0]
         self.assertEqual(convert("contigo"), "contigo")
         self.assertEqual(convert("tú eres"), "tú eres")
         self.assertEqual(convert("el vuestro"), "el vuestro")
 
     def test_possessive_and_os(self):
-        from second_person import convert_word_card as convert
-        self.assertEqual(convert("vuestro amigo"), "su amigo")
-        self.assertEqual(convert("os"), "se")
-        self.assertEqual(convert("os lo, os la"), "se lo, se la")
-        self.assertEqual(convert("os los, os las"), "se los, se las")
+        from second_person import convert_word_card
+        convert = lambda spanish, english="": convert_word_card(spanish, english)[0]
+        self.assertEqual(convert("vuestro loro"), "su loro")
+        self.assertEqual(convert("os", "oneself, themselves"), "se")
+        self.assertEqual(convert("os lo, os la", "it to you"), "se lo, se la")
+        self.assertEqual(convert("os los, os las", "them to you"), "se los, se las")
+        self.assertEqual(convert_word_card("os lo, os la", "it to you")[1], "it to you (all)")
+        self.assertEqual(convert_word_card("os los, os las", "them to you")[1], "them to you (all)")
+
+    def test_os_depends_on_the_gloss(self):
+        from second_person import convert_word_card
+        self.assertEqual(convert_word_card("os", "to you")[0], "les")
+        self.assertEqual(convert_word_card("os", "you (direct object)")[0], "los, las")
+        self.assertEqual(convert_word_card("os", "yourselves")[0], "se")
+
+    def test_bare_vuestro_card_becomes_de_ustedes(self):
+        from second_person import convert_word_card
+        self.assertEqual(convert_word_card("vuestro/a", "your (pl.)")[0], "de ustedes")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,15 @@ class ExtraVocabTests(unittest.TestCase):
         heading = image("p064_00.png", [obs("¿Dónde? Where?", 0.0, 0.9, 0.3)])
         self.assertEqual([(c.spanish, c.english) for c in extra_vocab.parse_interrogatives(heading, Counter())], [("¿dónde?", "where?")])
 
+    def test_a_missing_cien_is_added_next_to_the_hundreds(self):
+        img = image("p079_00.png", [
+            obs("200", 0.0, 0.9, 0.04), obs("doscientos", 0.1, 0.9),
+            obs("300", 0.0, 0.8, 0.04), obs("trescientos", 0.1, 0.8),
+            obs("400", 0.0, 0.7, 0.04), obs("cuatrocientos", 0.1, 0.7),
+        ])
+        spanish = [c.spanish for c in extra_vocab.parse_number_table(img, Counter())]
+        self.assertIn("cien", spanish)
+
     def test_sections_split_by_spanish_headers(self):
         img = image("p287_00.png", [
             obs("Verbos", 0.0, 0.95, 0.1),
@@ -97,29 +106,37 @@ class PipelineTests(unittest.TestCase):
 
     def test_tu_sentence_is_converted_and_unknown_one_dropped(self):
         vocabulary, stats = build([
-            two_columns([("hablar", "to speak")], "p010_00.png"),
-            two_columns([("¿Hablas español?", "Do you speak Spanish?"), ("¿Cuánto cobras?", "How much do you charge?")], "p011_00.png"),
+            two_columns([("cantar", "to sing")], "p010_00.png"),
+            two_columns([("¿Cantas bien?", "Do you sing well?"), ("¿Cuánto cobras?", "How much do you charge?")], "p011_00.png"),
         ])
         texts = [word["spanish"] for word in vocabulary["chapters"][0]["words"]]
-        self.assertIn("¿Hablás español?", texts)
+        self.assertIn("¿Cantás bien?", texts)
         self.assertNotIn("¿Cuánto cobras?", texts)
         self.assertEqual(stats["report"]["second_person.dropped"], 1)
 
     def test_pronoun_word_cards_become_argentine(self):
         vocabulary, stats = build([
-            two_columns([("para ti", "for you"), ("según tú", "according to you"), ("contigo", "with you"), ("os lo, os la", "it to you")], "p010_00.png"),
+            two_columns([("sin ti", "without you"), ("excepto tú", "except you"), ("contigo", "with you"), ("os lo, os la", "it to you")], "p010_00.png"),
         ])
-        self.assertEqual([word["spanish"] for word in vocabulary["chapters"][0]["words"]],
-                         ["para vos", "según vos", "contigo", "se lo, se la"])
+        words = vocabulary["chapters"][0]["words"]
+        self.assertEqual([word["spanish"] for word in words], ["sin vos", "excepto vos", "contigo", "se lo, se la"])
+        self.assertEqual(words[3]["english"], "it to you (all)")
         self.assertEqual(stats["report"]["second_person.word_cards_converted"], 3)
+
+    def test_interrogatives_are_kept_once_in_the_first_chapter(self):
+        vocabulary, _ = build([
+            two_columns([("¿cómo?", "how?"), ("¿dónde?", "where?")], "p010_00.png"),
+            two_columns([("¿cómo?", "how?")], "p110_00.png"),
+        ])
+        self.assertEqual([len(chapter["words"]) for chapter in vocabulary["chapters"]], [2, 0])
 
     def test_argentine_map_applies_to_words_and_sentences(self):
         vocabulary, _ = build([
-            two_columns([("el coche", "the car"), ("la patata", "the potato")], "p010_00.png"),
+            two_columns([("el coche", "the car"), ("la patata", "the potato"), ("el carro de compras", "the shopping cart")], "p010_00.png"),
             two_columns([("Yo tengo un coche rojo.", "I have a red car.")], "p011_00.png"),
         ])
         texts = [word["spanish"] for word in vocabulary["chapters"][0]["words"]]
-        self.assertEqual(texts, ["el auto", "la papa", "Yo tengo un auto rojo."])
+        self.assertEqual(texts, ["el auto", "la papa", "el carro de compras", "Yo tengo un auto rojo."])
 
 
 if __name__ == "__main__":

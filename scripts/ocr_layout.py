@@ -13,7 +13,11 @@ ENGLISH_MARKERS = re.compile(
 )
 CONJUGATION_MARKERS = re.compile(r"\b(?:nosotros|vosotros|ustedes|uds\.?|ud\.?)\b", re.IGNORECASE)
 HEADER_WORDS = {"adjective", "adverb", "noun", "verbs", "spanish", "english", "examples", "infinitive", "stem", "ending"}
-OCR_CORRECTIONS = {
+# OCR corrections are side-specific: an English fix must never touch Spanish text ("imposible" is a
+# real Spanish word) and the other way round. clean_text(text, "en"/"es") uses its own side only;
+# clean_text(text) on mixed text (an infinitive and its gloss in one line) uses both except for
+# words that are real in the other language (AMBIGUOUS_CORRECTIONS).
+ENGLISH_OCR_CORRECTIONS = {
     "to revieu": "to review",
     "to throu": "to throw",
     "the daun": "the dawn",
@@ -23,8 +27,6 @@ OCR_CORRECTIONS = {
     "somerne": "someone",
     "faceloverlook": "face/overlook",
     "cloudt": "cloudy",
-    "desparecerse": "desaparecerse",
-    "ilevar": "llevar",
     "siath": "sixth",
     "imposible": "impossible",
     "ơ'clock": "o'clock",
@@ -33,7 +35,7 @@ OCR_CORRECTIONS = {
     "vieu": "view",
     "artice": "article",
     "sweatt": "sweaty",
-    # Slips seen in example-sentence images (Vision confuses "y" with "v" and drops letters).
+    # Slips seen in example-sentence images (Vision reads "w" as "u"/"v" and drops letters).
     "sku": "sky",
     "thev": "they",
     "thev're": "they're",
@@ -51,7 +53,41 @@ OCR_CORRECTIONS = {
     "fridav": "Friday",
     "sundav": "Sunday",
     "saim": "swim",
+    "sau": "saw",
+    "hou": "how",
+    "oun": "own",
+    "nou": "now",
+    "kneu": "knew",
+    "tere": "there",
+    "dallare": "dollars",
+    "pensi": "pens",
+    "urites": "writes",
+    "dass": "class",
+    "basehall": "baseball",
+    "marketp": "marketplace",
+    "didt": "didn't",
 }
+SPANISH_OCR_CORRECTIONS = {
+    "desparecerse": "desaparecerse",
+    "ilevar": "llevar",
+    "parce": "parece",
+    "aver": "ayer",
+    "chóteres": "chóferes",
+    "apartmento": "apartamento",
+    "ahore": "ahora",
+}
+AMBIGUOUS_CORRECTIONS = {"imposible"}
+# Kept for callers that import the old name: the corrections that are safe on any text.
+OCR_CORRECTIONS = {
+    wrong: right
+    for table in (ENGLISH_OCR_CORRECTIONS, SPANISH_OCR_CORRECTIONS)
+    for wrong, right in table.items()
+    if wrong not in AMBIGUOUS_CORRECTIONS
+}
+# "cock" is a real word; it is a slip for "cook" only after a word that takes a verb.
+ENGLISH_CONTEXT_CORRECTIONS = [
+    (re.compile(r"(to|can|will|must|should|I|you|we|they|she|he|who|let's) cock(s|ed|ing)?\b", re.IGNORECASE), r"\1 cook\2"),
+]
 # Misreadings of the pronoun "I" at the start of a clause or before a verb ("1 am", "l have").
 PRONOUN_I_FIXES = [
     (re.compile(r"(?:^|(?<=[.?!,;:]\s))[1l|]\s+(?=[a-z])"), "I "),
@@ -81,12 +117,24 @@ IGNORED_IMAGES = {
 INVALID_PAIRS = {("valer", "to male")}
 
 
-def clean_text(text: str) -> str:
+def clean_text(text: str, side: str | None = None) -> str:
+    """Normalise whitespace and fix OCR slips. `side` is "en", "es" or None (mixed text)."""
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"^¿\s+", "¿", text)
     text = re.sub(r"\s+([?,!.])", r"\1", text)
-    for wrong, right in OCR_CORRECTIONS.items():
-        text = re.sub(rf"\b{re.escape(wrong)}\b", right, text, flags=re.IGNORECASE)
+    if side == "en":
+        corrections = ENGLISH_OCR_CORRECTIONS
+    elif side == "es":
+        corrections = SPANISH_OCR_CORRECTIONS
+    else:
+        corrections = OCR_CORRECTIONS
+    for wrong, right in corrections.items():
+        text = re.sub(rf"(?<![\w'’]){re.escape(wrong)}(?![\w'’])", right, text, flags=re.IGNORECASE)
+    if side == "en":
+        for pattern, replacement in ENGLISH_CONTEXT_CORRECTIONS:
+            text = pattern.sub(replacement, text)
+    if side == "es":
+        text = text.replace("®", "").replace("  ", " ").strip()
     return text
 
 

@@ -129,10 +129,47 @@ def fix_spanish(spanish: str) -> str:
     return re.sub(r"¿\s+", "¿", re.sub(r"¡\s+", "¡", spanish))
 
 
+LABEL = re.compile(
+    r"\b(?:Construction|NOTE|EXAMPLES?|Tense|Singular|Plural|Masculine|Feminine|Affirmative|Negative|"
+    r"Infinitive|Conjugations?|Exercises?|Vocabulary|Chapter|Lesson|Rule|Summary)\b|\bpg\.?\s*\d"
+)
+GARBLED_ENGLISH = re.compile(r"['‘’`]\s*\?+$|\?['‘’`]$|\s['‘’`]$|[?!.]{2,}\s*[?!]$")
+CUT_OFF_SPANISH = re.compile(
+    r"\b(?:si|que|este|esta|ese|esa|el|la|los|las|un|una|unos|unas|de|del|al|y|o|a|en|con|por|para|se|mi|tu|su|"
+    r"como|pero|cuando|donde|sin|sobre)$", re.IGNORECASE
+)
+CUT_OFF_ENGLISH = re.compile(
+    r"\b(?:the|a|an|to|of|if|that|this|and|or|in|with|for|at|on|by|from|but|because|when|where|my|your|his|her|"
+    r"our|their|is|are|was|were)$", re.IGNORECASE
+)
+
+
+def fix_doubled_punctuation(text: str) -> str:
+    """'house..' -> 'house.', 'house.,' -> 'house.' (an ellipsis of three dots is left alone)."""
+    text = re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
+    text = re.sub(r"\.,(?=\s+[a-záéíóúñ])", ",", text)  # 'voz., la cantante' -> 'voz, la cantante'
+    return re.sub(r"\.,", ".", text)
+
+
+def has_terminal(text: str) -> bool:
+    return bool(re.search(r"[.?!][\"”')]*$", text))
+
+
+def looks_cut_off(spanish: str, english: str) -> bool:
+    """A side with no closing punctuation that ends on a function word was cut off by the page edge."""
+    return (not has_terminal(spanish) and bool(CUT_OFF_SPANISH.search(spanish))) or (
+        not has_terminal(english) and bool(CUT_OFF_ENGLISH.search(english))
+    )
+
+
 def sentence_problem(spanish: str, english: str) -> str | None:
     """The reason a pair is not a clean example sentence, or None if it is."""
     if NOISE.search(spanish) or NOISE.search(english):
         return "noise"
+    if LABEL.search(spanish) or LABEL.search(english):
+        return "label"
+    if GARBLED_ENGLISH.search(english) or re.search(r"[.,]{2}(?!\.)|\.,", spanish + english):
+        return "garbled"
     if re.search(r"\(\s*[mf]\.?\s*\)|\((?:sing|pl)\.?\)", spanish + english, re.IGNORECASE):
         return "gloss"
     if is_vocabulary_pair(spanish, english):
@@ -169,8 +206,17 @@ def sentence_problem(spanish: str, english: str) -> str | None:
 def parse_image(image: dict, report: Counter) -> list[Card]:
     cards = []
     for spanish, english in column_pairs(image, report):
-        spanish = fix_spanish(re.sub(r"^[}>{›»|~]+\s*", "", spanish))
-        english = fix_english(clean_text(re.sub(r"^[}>{›»|~]+\s*", "", english)), spanish)
+        spanish = fix_doubled_punctuation(clean_text(re.sub(r"^[}>{›»|~]+\s*", "", spanish), "es"))
+        english = fix_doubled_punctuation(clean_text(re.sub(r"^[}>{›»|~]+\s*", "", english), "en"))
+        # Truncation is judged before punctuation is copied across.
+        if looks_cut_off(spanish, english):
+            report["sentences.rejected.cut_off"] += 1
+            continue
+        spanish = fix_spanish(spanish)
+        english = fix_english(english, spanish)
+        # When only the English closed the sentence, close the Spanish the same way.
+        if not has_terminal(spanish) and has_terminal(english):
+            spanish = fix_spanish(spanish + english[-1])
         problem = sentence_problem(spanish, english)
         if problem:
             report[f"sentences.rejected.{problem}"] += 1

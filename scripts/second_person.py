@@ -32,7 +32,13 @@ CORE_VERBS = {
 }
 
 WORD = r"[A-Za-zÁÉÍÓÚÑÜáéíóúñü]+"
-UNKNOWN_ATTACHED_IMPERATIVE = re.compile(r"^[a-z]{2,}[ae](?:me|te|lo|la|le|nos|los|las|les){1,2}$")
+UNKNOWN_ATTACHED_IMPERATIVE = re.compile(r"^[a-zñ]{2,}[ae](?:me|te|lo|la|le|nos|los|las|les){1,2}$")
+# Accented words that end in what looks like a clitic but are not verbs.
+NOT_IMPERATIVES = {"ojalá", "además", "quizá", "quizás", "acá", "allá", "allí", "aquí", "ahí", "jamás", "después"}
+# Vosotros verb endings with no safe ustedes conversion: such a sentence is dropped.
+VOSOTROS_DROP_ENDINGS = re.compile(r"(?:abais|íais|asteis|isteis|arais|ierais|aseis|ieseis)$", re.IGNORECASE)
+VOSOTROS_IRREGULAR = {"sois", "vais", "dais", "veis", "seáis", "vayáis", "estéis", "deis", "sepáis", "hayáis"}
+PREPOSITIONS_BEFORE_TI = r"(?:a|para|de|por|sin|en|como|según|hacia|hasta|entre)"
 DETERMINERS_BEFORE_NOUN = {
     "el", "la", "los", "las", "un", "una", "unos", "unas", "mis", "tus", "sus", "mi", "tu", "su", "de", "del",
     "al", "en", "con", "por", "para", "sin", "muchas", "muchos", "otras", "otros", "estas", "estos", "esas", "esos",
@@ -48,7 +54,7 @@ SHARED_TU_VOS_ENDINGS = re.compile(
 SUBJECT_YOU = re.compile(
     r"(?:^|[.?!,;:]\s*)(?:you|do you|are you|can you|will you|would you|did you|have you|should you|could you|"
     r"were you|was you|must you|may you)\b|"
-    r"\b(?:are|do|did|can|could|will|would|have|has|had|should|must|may|were|was|am|shall|does|is)\s+you\b|"
+    r"\b(?:are|do|did|can|could|will|would|have|has|had|should|must|may|were|was|am|shall|does|is|\w+n't)\s+you\b|"
     r"\b(?:that|if|when|because|where|what|how|why|who|whom|while|as|since|than|and|but|so|or|unless|until|"
     r"before|after|whether)\s+you\b",
     re.IGNORECASE,
@@ -114,6 +120,36 @@ def match_case(original: str, replacement: str) -> str:
     return replacement[:1].upper() + replacement[1:] if original[:1].isupper() else replacement
 
 
+def attached_os_form(tokens: list[str], english: str, lexicon: Lexicon) -> bool:
+    """A vosotros form with 'os' attached: escribiros, mandároslos, Bañaos, Ponéosla, Divertíos.
+
+    Verb-gated so nouns such as 'tíos' or 'museos' are not caught; a command at the start of the
+    sentence with an imperative English gloss is caught even if the verb is not in the lexicon.
+    """
+    known = {strip_accents(infinitive) for infinitive in lexicon.glosses}
+    english_first = (re.findall(r"[a-z']+", english.lower()) or [""])[0]
+    for position, token in enumerate(tokens):
+        word = strip_accents(token.lower())
+        # infinitive + os (+ lo/la/los/las): the clitic makes it certain
+        if re.search(r"(?:ar|er|ir)os(?:lo|la|los|las)$", word):
+            return True
+        match = re.fullmatch(r"(.+(?:ar|er|ir))os", word)
+        if match and match.group(1) in known:
+            return True
+        # command + os (+ clitic): bañaos, poneosla, divertios
+        match = re.fullmatch(r"(.+?)([aei])os(?:lo|la|los|las|le|les|me|nos)?", word)
+        if match and len(match.group(1)) >= 2:
+            infinitive = match.group(1) + {"a": "ar", "e": "er", "i": "ir"}[match.group(2)]
+            if infinitive in known:
+                return True
+            if position == 0 and english_first and english_first not in NON_IMPERATIVE_STARTS and not word.endswith(("caos", "tios", "rios")):
+                return True
+        match = re.fullmatch(r"(.+(?:ad|ed|id))(?:lo|la|los|las|le|les|me|nos)", word)
+        if match and position == 0:
+            return True
+    return False
+
+
 def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | None:
     """Handle a sentence addressed to vosotros. None if the sentence is not about vosotros."""
     tokens = re.findall(WORD, spanish)
@@ -125,15 +161,18 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
             and first[:-2] + {"ad": "ar", "ed": "er", "id": "ir"}[first[-2:]] in lexicon.glosses
         )
     )
-    attached_os = _is_attached_os_imperative(first, lexicon) or bool(
-        re.fullmatch(r"[a-záéíóú]{2,}[aei]d(?:lo|la|los|las|le|les|me|nos)", first)
-    )
-    verb_forms = [token for token in tokens if re.fullmatch(r"[a-záéíóú]+(?:áis|éis)|sois|vais|dais|veis", token.lower())]
-    if attached_os:
+    if attached_os_form(tokens, english, lexicon):
         return Outcome("dropped", spanish, "vosotros")
+    verb_forms = [
+        token for token in tokens
+        if re.fullmatch(r"[a-záéíóú]+(?:áis|éis)", token.lower()) or token.lower() in VOSOTROS_IRREGULAR
+        or VOSOTROS_DROP_ENDINGS.search(token.lower())
+    ]
     if not (VOSOTROS_MARKERS.search(spanish) or verb_forms or imperative_at_start):
         return None
     if re.search(r"\bos\b", spanish, re.IGNORECASE):
+        return Outcome("dropped", spanish, "vosotros")
+    if any(token.lower() in VOSOTROS_IRREGULAR or VOSOTROS_DROP_ENDINGS.search(token.lower()) for token in tokens):
         return Outcome("dropped", spanish, "vosotros")
 
     result = spanish
@@ -151,14 +190,19 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
     try:
         result = re.sub(rf"\b{WORD}(?:áis|éis)\b", verb_replacement, result, flags=re.IGNORECASE)
         result = re.sub(r"\bvosotros\b|\bvosotras\b", lambda m: match_case(m.group(0), "ustedes"), result, flags=re.IGNORECASE)
-        # A possessive before its noun becomes su/sus; one after the noun ("los amigos vuestros") is not
-        # certain to read right, so the sentence is dropped.
-        for match in re.finditer(r"\bvuestr(?:o|a|os|as)\b", result, re.IGNORECASE):
+        # A possessive before its noun becomes su/sus. After es/son at the end of the clause it becomes
+        # "de ustedes" ("es vuestro" -> "es de ustedes"). Anywhere else the sentence is dropped.
+        for match in list(re.finditer(r"\bvuestr(?:o|a|os|as)\b", result, re.IGNORECASE))[::-1]:
             before = re.findall(WORD, result[:match.start()])
-            if before and before[-1].lower() not in {"de", "con", "en", "a", "para", "por", "y", "o", "sin", "sobre", "es", "son"}:
+            previous = before[-1].lower() if before else ""
+            after = result[match.end():]
+            if previous in {"es", "son"} and re.match(r"\s*[.?!,;]?\s*$", after):
+                result = result[:match.start()] + "de ustedes" + after
+            elif not before or previous in {"de", "con", "en", "a", "para", "por", "y", "o", "sin", "sobre"}:
+                plural = match.group(0).lower().endswith("s")
+                result = result[:match.start()] + match_case(match.group(0), "sus" if plural else "su") + after
+            else:
                 return Outcome("dropped", spanish, "vosotros")
-        result = re.sub(r"\bvuestr(?:o|a)\b", lambda m: match_case(m.group(0), "su"), result, flags=re.IGNORECASE)
-        result = re.sub(r"\bvuestr(?:os|as)\b", lambda m: match_case(m.group(0), "sus"), result, flags=re.IGNORECASE)
         if imperative_at_start:
             infinitive_form = _vosotros_imperative(first, english)
             if infinitive_form is None:
@@ -166,19 +210,10 @@ def convert_vosotros(spanish: str, english: str, lexicon: Lexicon) -> Outcome | 
             result = re.sub(rf"^{re.escape(tokens[0])}", match_case(tokens[0], infinitive_form), result)
     except ValueError:
         return Outcome("dropped", spanish, "vosotros")
-    # Any remaining vosotros-looking verb (-ís, sois, vais...) was not understood.
-    if re.search(rf"\b(?:{WORD}(?:áis|éis|ís)|sois|vais|dais|veis|seáis|vayáis|estéis)\b", result, re.IGNORECASE):
+    # Any remaining vosotros-looking verb (-ís, sois, vais, -asteis...) was not understood.
+    if re.search(rf"\b(?:{WORD}(?:áis|éis|ís|abais|íais|asteis|isteis|arais|ierais|aseis|ieseis)|sois|vais|dais|veis|seáis|vayáis|estéis)\b", result, re.IGNORECASE):
         return Outcome("dropped", spanish, "vosotros")
     return Outcome("converted", result, "vosotros")
-
-
-def _is_attached_os_imperative(word: str, lexicon: Lexicon) -> bool:
-    """'divertíos' / 'levantaos': a vosotros command with the pronoun attached (divertid + os)."""
-    if not word.endswith(("íos", "aos", "eos")) or len(word) < 5:
-        return False
-    stem = strip_accents(word[:-2])  # 'divertí' -> 'diverti'
-    infinitive = stem[:-1] + {"a": "ar", "e": "er", "i": "ir"}[stem[-1]]
-    return infinitive in lexicon.glosses
 
 
 def _vosotros_imperative(token: str, english: str) -> str | None:
@@ -214,9 +249,16 @@ def convert_tu_imperative(spanish: str, english: str, lexicon: Lexicon, index: d
         # An imperative with attached pronouns whose verb we do not know ("Lávate", "Háblame") could be
         # tú or Ud.; we cannot tell, so it is dropped instead of kept in a form the deck should not teach.
         stripped = strip_accents(token.lower())
+        accent_position = next((i for i, char in enumerate(token.lower()) if char in "áéíóú"), -1)
+        # The written accent of verb + clitics sits before the clitics; a final accent (ojalá) is not a verb.
+        accent_inside = 0 <= accent_position < len(token) - 2
+        # One stray OCR letter after the clitics ("Enséñanosa") makes the command unverifiable.
+        shapes = [stripped, stripped[:-1]]
         if (
-            token.lower() != stripped and UNKNOWN_ATTACHED_IMPERATIVE.match(stripped)
-            and not stripped.endswith(("ese", "ense")) and "mos" not in stripped and english_first not in NON_IMPERATIVE_STARTS and english_first
+            accent_inside and token.lower() not in NOT_IMPERATIVES
+            and any(UNKNOWN_ATTACHED_IMPERATIVE.match(shape) for shape in shapes)
+            and not stripped.endswith(("ese", "ense")) and "mos" not in stripped
+            and english_first not in NON_IMPERATIVE_STARTS and english_first
         ):
             return Outcome("dropped", spanish, "unverified_imperative")
         return None
@@ -259,7 +301,7 @@ def convert_tu_present(spanish: str, english: str, lexicon: Lexicon, present_ind
         elif lower == "contigo":
             replacement = match_case(word, "con vos")
             recognised = True
-        elif lower == "ti" and previous_word in {"a", "para", "de", "por", "sin", "en", "como", "según", "hacia", "hasta"}:
+        elif lower == "ti" and re.fullmatch(PREPOSITIONS_BEFORE_TI, previous_word):
             replacement = "vos"
             recognised = True
         elif lower in present_index and previous_word not in DETERMINERS_BEFORE_NOUN:
@@ -283,6 +325,12 @@ def convert_tu_present(spanish: str, english: str, lexicon: Lexicon, present_ind
     pieces.append(spanish[cursor:])
     converted = "".join(pieces)
 
+    # "te llamas": a reflexive/clitic tú verb must have been converted (or already equal vos).
+    vos_equal = {form for form, infinitives in present_index.items() if {vos_present(i) for i in infinitives} == {form}}
+    for te_verb in re.finditer(rf"\bte\s+({WORD})", converted, re.IGNORECASE):
+        word = te_verb.group(1).lower()
+        if re.search(r"(?:as|es)$", word) and word not in vos_equal and word not in {"mas", "tres", "es", "días", "veces"}:
+            return Outcome("dropped", spanish, "unverified_tu_verb")
     # Present subjunctive after "que" is the same for tú and vos.
     if not recognised and re.search(r"\bque\s+(?:\w+\s+)?\w+(?:as|es)\b", spanish, re.IGNORECASE):
         recognised = True
@@ -299,37 +347,56 @@ def convert_sentence(spanish: str, english: str, lexicon: Lexicon, indexes: dict
     vosotros = convert_vosotros(spanish, english, lexicon)
     if vosotros is not None:
         return vosotros
-    if UD_MARKERS.search(spanish) and not re.search(r"\btú\b|\bcontigo\b", spanish, re.IGNORECASE):
+    if UD_MARKERS.search(spanish) and not re.search(r"\btú\b|\bcontigo\b|\bti\b", spanish, re.IGNORECASE):
         return Outcome("unchanged", spanish, "formal")
     imperative = convert_tu_imperative(spanish, english, lexicon, indexes["imperative"])
     if imperative is not None:
         return imperative
     if SUBJECT_YOU.search(english) and not re.search(r"\byou all\b|\bthey\b", english, re.IGNORECASE):
         return convert_tu_present(spanish, english, lexicon, indexes["present"])
-    # English has no subject "you": a tú form is still possible when the Spanish has the pronoun "tú".
-    if re.search(r"\btú\b", spanish, re.IGNORECASE) or re.search(r"\bcontigo\b", spanish, re.IGNORECASE):
+    # English has no subject "you", but the Spanish can still be addressed to tú: the pronoun, "ti"/"contigo",
+    # or a reflexive/clitic verb ("te llamas").
+    if (
+        re.search(r"\btú\b|\bcontigo\b", spanish, re.IGNORECASE)
+        or re.search(rf"\b{PREPOSITIONS_BEFORE_TI}\s+ti\b", spanish, re.IGNORECASE)
+        or re.search(r"\bte\s+\w+(?:as|es)\b", spanish, re.IGNORECASE)
+    ):
         return convert_tu_present(spanish, english, lexicon, indexes["present"])
     return Outcome("unchanged", spanish, "no_second_person")
 
 
-def convert_word_card(spanish: str) -> str:
-    """The Argentine form of a vocabulary card's Spanish side: tú -> vos, vosotros -> ustedes.
+def convert_word_card(spanish: str, english: str = "") -> tuple[str, str]:
+    """The Argentine form of a vocabulary card: tú -> vos, vosotros -> ustedes. Returns (spanish, english).
 
-    Only certain cases change: the pronouns themselves, 'ti' after a preposition, a prenominal
-    vuestro -> su, and 'os' used as an indirect object or reflexive -> 'se'. 'contigo' stays
-    (it is correct in Argentina). Anything else, including verb forms, is left as it is.
+    Only certain cases change: the pronouns on their own or after a preposition, 'ti' after a
+    preposition, a prenominal vuestro -> su, a bare vuestro card -> 'de ustedes', and 'os' cards, which
+    depend on the English gloss (reflexive -> se, "to you" -> les / se lo, se la...). 'contigo' stays.
+    The English changes only to keep ustedes cards apart from the singular ones ("to you (all)").
+    Anything else, including verb forms, is left as it is.
     """
-    # A pronoun is converted only on its own or after a preposition; "tú eres" would also need its verb.
     standalone = r"(^|\b(?:según|entre|como|excepto|salvo|menos|incluso|que)\s)"
     result = re.sub(rf"{standalone}tú(?=\s*$|\s+y\b)", lambda m: m.group(1) + "vos", spanish, flags=re.IGNORECASE)
-    result = re.sub(
-        r"\b(a|para|de|por|sin|en|como|según|hacia|hasta) ti\b", lambda m: f"{m.group(1)} vos", result, flags=re.IGNORECASE
-    )
+    result = re.sub(rf"\b({PREPOSITIONS_BEFORE_TI}) ti\b", lambda m: f"{m.group(1)} vos", result, flags=re.IGNORECASE)
     result = re.sub(rf"{standalone}vosotr(?:os|as)(?=\s*$|\s+y\b)", lambda m: m.group(1) + "ustedes", result, flags=re.IGNORECASE)
-    # A possessive that opens the card, or follows a preposition, is prenominal: vuestro amigo -> su amigo.
+    if re.fullmatch(r"vuestr(?:o|os|a|as)(?:/a)?", result, re.IGNORECASE):
+        return "de ustedes", english
     prepositions = r"(?:de|con|en|a|para|por|sin|sobre)"
-    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:o|a)\b", lambda m: m.group(1) + "su", result, flags=re.IGNORECASE)
-    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:os|as)\b", lambda m: m.group(1) + "sus", result, flags=re.IGNORECASE)
-    # 'os' / 'os lo' / 'os las' (indirect object or reflexive for vosotros) -> 'se ...'
-    result = re.sub(r"(^|,\s*)os\b(?=\s*(?:,|$|\s(?:lo|la|los|las)\b))", lambda m: m.group(1) + "se", result, flags=re.IGNORECASE)
-    return result
+    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:o|a)\b(?=\s+\w)", lambda m: m.group(1) + "su", result, flags=re.IGNORECASE)
+    result = re.sub(rf"(^|\b{prepositions}\s)vuestr(?:os|as)\b(?=\s+\w)", lambda m: m.group(1) + "sus", result, flags=re.IGNORECASE)
+
+    # 'os' cards, decided by what the English says os means.
+    if re.fullmatch(r"os", result, re.IGNORECASE):
+        if re.search(r"\bselves\b|\bthemselves\b|\byourselves\b", english):
+            return "se", english
+        if re.match(r"to you\b", english):
+            return "les", english
+        if re.fullmatch(r"you(?: \(.*\))?", english):
+            return "los, las", english
+        return spanish, english
+    if re.fullmatch(r"os (?:lo|la|los|las)(?:, os (?:lo|la|los|las))*", result, re.IGNORECASE):
+        if re.search(r"\bto you\b", english):
+            result = re.sub(r"\bos\b", "se", result)
+            english = re.sub(r"\bto you\b(?! \(all\))", "to you (all)", english)
+            return result, english
+        return spanish, english
+    return result, english

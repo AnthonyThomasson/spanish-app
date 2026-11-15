@@ -94,14 +94,38 @@ _CONDUCIR = {
     "conducí": "manejá",
 }
 _COGER = {
-    "coger": "agarrar", "cojo": "agarro", "coges": "agarras", "cogés": "agarrás", "coge": "agarra",
+    "coger": "agarrar", "coges": "agarras", "cogés": "agarrás", "coge": "agarra",
     "cogemos": "agarramos", "cogen": "agarran", "cogí": "agarré", "cogiste": "agarraste", "cogió": "agarró",
     "cogimos": "agarramos", "cogieron": "agarraron", "cogía": "agarraba", "cogías": "agarrabas",
     "cogíamos": "agarrábamos", "cogían": "agarraban", "cogiendo": "agarrando", "cogido": "agarrado",
-    "cogeré": "agarraré", "cogerá": "agarrará", "cogería": "agarraría", "coja": "agarre", "cojas": "agarres",
-    "cojamos": "agarremos", "cojan": "agarren",
+    "cogeré": "agarraré", "cogerá": "agarrará", "cogería": "agarraría",
 }
+# "cojo/coja/cojas/cojan" (present subjunctive of coger) are also the adjective "lame": never mapped.
 VERBS = {**_CONDUCIR, **_COGER}
+
+
+# A noun or verb is replaced only when the English gloss shows the sense the map is for:
+# 'carro' is a car, not a shopping cart; 'banqueta' a sidewalk, not a stool; 'conducir' to drive, not to conduct.
+GLOSS_REQUIRED = {
+    "carro": r"\bcars?\b|\bautomobiles?\b",
+    "coche": r"\bcars?\b|\bautomobiles?\b",
+    "banqueta": r"sidewalk|pavement",
+    "autobús": r"\bbus(?:es)?\b",
+    "aguacate": r"avocado",
+    "plátano": r"banana",
+    "nata": r"cream",
+    "fresa": r"strawberr",
+    "móvil": r"cell|mobile",
+    "falda": r"skirt",
+    "gafas": r"glasses|eyeglasses|spectacles",
+    "maleta": r"suitcase|luggage|bag",
+    "piscina": r"pool|swimming",
+}
+VERB_GLOSS_REQUIRED = {
+    "conduc": r"\b(?:drive|drives|driving|drove|driven)\b",
+    "cog": r"\b(?:take|takes|took|taken|taking|catch|catches|caught|grab|grabs|grabbed|pick|picks|get|gets|got|seize|grasp)\b",
+}
+NOT_FOLLOWED_BY = {"autobús": {"escolar"}, "coche": {"cama"}}
 
 
 def _match_case(original: str, replacement: str) -> str:
@@ -109,6 +133,14 @@ def _match_case(original: str, replacement: str) -> str:
 
 
 def _plural(word: str) -> str:
+    """Plural of a Spanish noun; for a phrase ('estación de servicio') only the head noun is pluralised."""
+    if " " in word:
+        head, rest = word.split(" ", 1)
+        return f"{_plural(head)} {rest}"
+    if word.endswith("ón"):
+        return word[:-2] + "ones"
+    if word.endswith("í"):
+        return word + "es"  # maní -> maníes
     return word + ("es" if word[-1] in "lrnzd" or word.endswith("ús") else "s")
 
 
@@ -149,8 +181,14 @@ def _plain_gap(pieces: list[tuple[str, bool]], first: int, second: int) -> bool:
     return second - first == 2 and not pieces[first + 1][0].strip()
 
 
-def argentinize(text: str) -> str:
-    """Apply the Argentine word map to a Spanish string."""
+def argentinize(text: str, english: str = "", kind: str = "word") -> str:
+    """Apply the Argentine word map to a Spanish string.
+
+    `english` is the card's English: entries with a gloss rule are used only when it matches (if no
+    English is given the rule is not checked). `kind` is "word" or "sentence": a noun whose gender
+    changes (ordenador -> computadora) is replaced only on word cards, because in a sentence the
+    adjectives, participles and clitics that refer back to it would no longer agree.
+    """
     pieces = _tokens(text)
     words = [index for index, (_, is_word) in enumerate(pieces) if is_word]
     result = [piece for piece, _ in pieces]
@@ -164,6 +202,9 @@ def argentinize(text: str) -> str:
         next_word = pieces[next_index][0].lower() if next_index is not None and _plain_gap(pieces, index, next_index) else ""
 
         if lower in VERBS:
+            stem = "conduc" if lower in _CONDUCIR else "cog"
+            if english and not re.search(VERB_GLOSS_REQUIRED[stem], english, re.IGNORECASE):
+                continue  # "to conduct (an orchestra)" is not "to drive"
             replacement = VERBS[lower]
             if lower in _COGER and next_word in {"el", "un", "la", "una"}:
                 after = words[position + 2] if position + 2 < len(words) else None
@@ -176,10 +217,19 @@ def argentinize(text: str) -> str:
         if found is None:
             continue
         replacement, old_gender, new_gender, _ = found
+        key = lower if lower in NOUNS else next((k for k in NOUNS if lower in (k, _plural(k))), lower)
+        gloss_rule = GLOSS_REQUIRED.get(key)
+        if english and gloss_rule and not re.search(gloss_rule, english, re.IGNORECASE):
+            continue
+        if next_word in NOT_FOLLOWED_BY.get(key, ()):
+            continue
         if old_gender == new_gender:
             result[index] = _match_case(word, replacement)
             continue
-        # Gender changes: flip the article, but only when nothing else would have to agree.
+        # Gender changes: flip the article, but only on word cards. In a sentence an adjective, participle
+        # or clitic elsewhere ("los anteojos ... las habría encontrado") would no longer agree.
+        if kind == "sentence":
+            continue
         if previous_word in BLOCKING_PREVIOUS_WORDS or (next_word and next_word not in SAFE_NEXT_WORDS):
             continue
         flip = MASCULINE_TO_FEMININE if old_gender == "m" else FEMININE_TO_MASCULINE

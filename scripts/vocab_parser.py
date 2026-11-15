@@ -53,7 +53,7 @@ PAIR_CORRECTIONS = {
     ("hace dos días", "in the past) two days ago"): ("hace dos días", "two days ago"),
     ("caber", "to fit (one thing inside"): ("caber", "to fit (one thing inside)"),
     ("maquillarse", "immediacy) to put makeup on"): ("maquillarse", "to put makeup on"),
-    ("es impossible (que)", "it is impossible that"): ("es imposible (que)", "it is impossible (that)"),
+    ("es imposible (que)", "it is impossible that"): ("es imposible (que)", "it is impossible (that)"),
     ("es preciso (que)", "it is extremely necessary (that"): ("es preciso (que)", "it is extremely necessary (that)"),
     ("echar de menos", "to miss (a person or place"): ("echar de menos", "to miss (a person or place)"),
     ("ser todo oídos", "to he all ears"): ("ser todo oídos", "to be all ears"),
@@ -90,8 +90,8 @@ def pair_columns(spanish: list[dict], english: list[dict]) -> list[tuple[str, st
     for row in merged:
         if not row["english"]:
             continue
-        spanish_text = clean_text(" ".join(item["text"] for item in sorted(row["spanish"], key=lambda item: -center_y(item))))
-        english_text = clean_text(" ".join(item["text"] for item in sorted(row["english"], key=lambda item: -center_y(item))))
+        spanish_text = clean_text(" ".join(item["text"] for item in sorted(row["spanish"], key=lambda item: -center_y(item))), "es")
+        english_text = clean_text(" ".join(item["text"] for item in sorted(row["english"], key=lambda item: -center_y(item))), "en")
         if spanish_text.lower() in HEADER_WORDS or english_text.lower() in HEADER_WORDS:
             continue
         pairs.append((spanish_text, english_text))
@@ -99,7 +99,7 @@ def pair_columns(spanish: list[dict], english: list[dict]) -> list[tuple[str, st
 
 
 def clean_pair(pair: tuple[str, str]) -> tuple[str, str]:
-    spanish, english = clean_text(pair[0]), clean_text(pair[1])
+    spanish, english = clean_text(pair[0], "es"), clean_text(pair[1], "en")
     spanish = re.sub(r"^\d+(?:\.|\s)\s*", "", spanish)
     spanish = re.sub(r"\s+(?:segundo second|tercero third|quinto fifth|octavo eighth|noveno ninth|décimo tenth)$", "", spanish)
     spanish = re.sub(r"\s+(?:Expresiones con Verbos|Adjetivos|Pronombres)$", "", spanish)
@@ -231,14 +231,17 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
                 report[f"second_person.converted.{outcome.reason}"] += 1
             spanish = outcome.spanish
         if card.kind == WORD:
-            converted = convert_word_card(spanish)
-            if converted != spanish:
+            converted, english = convert_word_card(spanish, card.english)
+            if (converted, english) != (spanish, card.english):
                 report["second_person.word_cards_converted"] += 1
-                spanish = converted
-        mapped = argentinize(spanish)
+            spanish = converted
+            card = Card(card.spanish, english, card.kind, card.needs_second_person_pass)
+        mapped = argentinize(spanish, card.english, card.kind)
         if mapped != spanish:
             report[f"argentine.changed.{card.kind}"] += 1
-        key = (chapter_number, card.kind, normalized_key(mapped), normalized_key(card.english))
+        # An interrogative word ("¿cómo?") is taught once, in the first chapter that lists it.
+        is_interrogative = card.kind == WORD and mapped.startswith("¿") and mapped.endswith("?")
+        key = (None if is_interrogative else chapter_number, card.kind, normalized_key(mapped), normalized_key(card.english))
         if key in seen:
             report[f"duplicates.{card.kind}"] += 1
             continue
