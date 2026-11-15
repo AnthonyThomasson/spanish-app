@@ -41,6 +41,9 @@ public class BackgroundSessionService extends android.app.Service {
     private AudioManager audioManager;
     private AudioFocusRequest focusRequest;
     private boolean hasFocus;
+    /** Whether startForeground has succeeded, and with which types; later updates must not downgrade them. */
+    private boolean foreground;
+    private int foregroundTypes;
 
     static boolean isActive() {
         return SessionRegistry.isActive();
@@ -173,28 +176,50 @@ public class BackgroundSessionService extends android.app.Service {
         stopSelf();
     }
 
-    /** @return false if the system refused and the session was given up. */
-    private boolean promoteToForeground() {
+    /**
+     * Shows the notification: startForeground only when the service is not foreground yet or needs a
+     * new type, otherwise just re-posts it so the running service keeps the types it already has.
+     */
+    private void promoteToForeground() {
         Notification notification = buildNotification();
         boolean micGranted =
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         int types = ForegroundTypes.resolve(Build.VERSION.SDK_INT, micGranted, state.mode());
+        if (!ForegroundPromotion.shouldPromote(foreground, foregroundTypes, types)) {
+            notifyOnly(notification);
+            return;
+        }
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types);
-            return true;
+            foreground = true;
+            foregroundTypes = types;
+            return;
         } catch (RuntimeException e) {
+            if (foreground) {
+                // Refused an upgrade (e.g. from the background): keep what is running, never downgrade it.
+                notifyOnly(notification);
+                return;
+            }
             // Microphone type can be refused (e.g. started from the background): retry with media only.
             int mediaOnly = ForegroundTypes.resolve(Build.VERSION.SDK_INT, false, state.mode());
             if (mediaOnly != types) {
                 try {
                     ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
-                    return true;
+                    foreground = true;
+                    foregroundTypes = mediaOnly;
+                    return;
                 } catch (RuntimeException ignored) {
                     // fall through to giving up
                 }
             }
             giveUp();
-            return false;
+        }
+    }
+
+    private void notifyOnly(Notification notification) {
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(NOTIFICATION_ID, notification);
         }
     }
 
