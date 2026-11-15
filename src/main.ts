@@ -1,7 +1,15 @@
 import './style.css';
+import { backgroundSession } from './background-session';
 import { isCorrectAnswer } from './matching';
+import { buildNotification } from './notification';
+import { ensureMicrophonePermission } from './microphone';
+import { RecognitionMonitor, recognitionFailureMessage, recognitionFailureNotice, recognitionRetryDelay } from './recognition-errors';
+import { dispatchBackgroundAction } from './session-actions';
+import { singleFlight } from './single-flight';
+import { shouldAutoPauseWhenHidden } from './session-policy';
 import { recognitionConstructor, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Card, Chapter, Direction, Mode, Vocabulary } from './types';
+import { createWait } from './wait';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -111,6 +119,7 @@ const completeView = element<HTMLElement>('complete');
 const form = element<HTMLFormElement>('deck-form');
 const chapterList = element<HTMLDivElement>('chapter-list');
 const speaker = new Speaker();
+const recognitionMonitor = new RecognitionMonitor();
 
 let chapters: Chapter[] = [];
 let deck: Card[] = [];
@@ -121,6 +130,8 @@ let paused = false;
 let active = false;
 let runId = 0;
 let recognition: SpeechRecognitionLike | null = null;
+/** Why the session paused itself after a recognition failure; shown in the notification until Resume or the next card. */
+let failureNotice: string | null = null;
 let settings = { direction: 'both' as Direction, mode: 'flip' as Mode, delay: 3, shuffle: true };
 
 const promptFor = ({ word, direction }: Card) => direction === 'es-en' ? word.spanish : word.english;
@@ -211,8 +222,7 @@ function shuffle<T>(items: T[]): T[] {
   return result;
 }
 
-function startDeck(event?: SubmitEvent): void {
-  event?.preventDefault();
+async function beginDeck(): Promise<void> {
   readSettings();
   const selected = selectedChapterNumbers();
   if (!selected.length) {
@@ -224,6 +234,9 @@ function startDeck(event?: SubmitEvent): void {
     return;
   }
   element('start-error').textContent = '';
+  // The microphone-typed foreground service only gets the mic if it is already granted when it starts,
+  // and Android 14 forbids starting it from the background, so ask now while the app is visible.
+  if (usingNativeSpeech() && settings.mode === 'answer') await ensureMicrophonePermission();
   const words = chapters.filter((chapter) => selected.includes(chapter.number)).flatMap((chapter) => chapter.words);
   const ordered = settings.shuffle ? shuffle(words) : words;
   deck = ordered.map((word) => ({
@@ -239,6 +252,11 @@ function startDeck(event?: SubmitEvent): void {
   showCard();
 }
 
+// Starting can wait on a permission prompt, so ignore repeat taps until it finishes.
+const startDeck = singleFlight(beginDeck, (busy) => {
+  document.querySelectorAll<HTMLButtonElement>('.start-button, #restart-deck').forEach((button) => { button.disabled = busy; });
+});
+
 function showCard(): void {
   stopCurrent();
   if (currentIndex >= deck.length) {
@@ -247,6 +265,8 @@ function showCard(): void {
   }
   misses = 0;
   revealed = false;
+  failureNotice = null;
+  recognitionMonitor.reset();
   const card = deck[currentIndex];
   const token = runId;
   element('session-mode').textContent = { flip: 'Flip cards', auto: 'Auto listen', answer: 'Speak answers' }[settings.mode];
@@ -265,8 +285,26 @@ function showCard(): void {
   element('next-button').innerHTML = settings.mode === 'flip' ? 'Next card <span aria-hidden="true">→</span>' : 'Skip card <span aria-hidden="true">→</span>';
   setStatus(settings.mode === 'flip' ? 'Tap the card when you’re ready.' : 'Get ready to listen…');
 
+  syncBackground();
+
   if (settings.mode === 'auto') void runAuto(card, token);
   if (settings.mode === 'answer') void runAnswer(card, token);
+}
+
+/** Keeps the Android foreground-service notification in step with the card on screen. */
+function syncBackground(): void {
+  if (!active || settings.mode === 'flip' || currentIndex >= deck.length) return;
+  const card = deck[currentIndex];
+  backgroundSession.sync(buildNotification({
+    mode: settings.mode,
+    index: currentIndex,
+    total: deck.length,
+    prompt: promptFor(card),
+    answer: answerFor(card),
+    revealed,
+    paused,
+    notice: failureNotice,
+  }));
 }
 
 function revealAnswer(): void {
@@ -280,6 +318,7 @@ function revealAnswer(): void {
   element('card-detail').hidden = !detail;
   element('flip-hint').hidden = true;
   element('flashcard').classList.add('revealed');
+  syncBackground();
 }
 
 function setStatus(message: string, state = ''): void {
@@ -302,23 +341,8 @@ function nextCard(): void {
   showCard();
 }
 
-async function wait(milliseconds: number, token: number): Promise<boolean> {
-  let remaining = milliseconds;
-  let previous = Date.now();
-  return new Promise((resolve) => {
-    const tick = () => {
-      if (token !== runId || !active) {
-        resolve(false);
-        return;
-      }
-      const now = Date.now();
-      if (!paused) remaining -= now - previous;
-      previous = now;
-      if (remaining <= 0) resolve(true);
-      else window.setTimeout(tick, Math.min(100, remaining));
-    };
-    tick();
-  });
+function wait(milliseconds: number, token: number): Promise<boolean> {
+  return createWait({ isCancelled: () => token !== runId || !active, isPaused: () => paused })(milliseconds);
 }
 
 async function runAuto(card: Card, token: number): Promise<void> {
@@ -351,6 +375,7 @@ function startListening(card: Card, token: number): void {
   current.interimResults = false;
   current.maxAlternatives = 5;
   let handled = false;
+  let retryDelay = recognitionRetryDelay('no-speech');
   setStatus('Listening… say your answer.', 'listening');
 
   current.onresult = (event) => {
@@ -359,25 +384,28 @@ function startListening(card: Card, token: number): void {
     for (let i = 0; i < event.results.length; i++) {
       for (let j = 0; j < event.results[i].length; j++) transcripts.push(event.results[i][j].transcript);
     }
+    recognitionMonitor.reset();
     const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card)));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
     void handleSpokenAnswer(correct, card, token);
   };
   current.onerror = (event) => {
-    if (event.error === 'aborted') return;
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+    // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
+    if (event.error === 'aborted' || token !== runId || !active || paused) return;
+    const verdict = recognitionMonitor.handle(event.error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
+    retryDelay = recognitionMonitor.retryDelay(event.error);
+    if (verdict === 'pause') {
       handled = true;
-      paused = true;
-      element('pause-button').textContent = 'Resume';
-      setStatus('Microphone access is blocked. Allow it in your browser settings, then press Resume.');
-    } else if (event.error !== 'no-speech') {
+      pauseAfterRecognitionFailure(event.error);
+    } else if (verdict === 'retry') {
       setStatus('Recognition had trouble. I’ll try listening again.');
     }
   };
   current.onend = () => {
+    if (recognition === current) recognition = null; // no longer listening
     if (!handled && token === runId && active && !paused) {
       setStatus('I didn’t catch that. Listening again…', 'listening');
-      window.setTimeout(() => startListening(card, token), 250);
+      window.setTimeout(() => startListening(card, token), retryDelay);
     }
   };
   try {
@@ -385,6 +413,16 @@ function startListening(card: Card, token: number): void {
   } catch {
     setStatus('Couldn’t start the microphone. Press Pause, then Resume to try again.');
   }
+}
+
+function pauseAfterRecognitionFailure(error: string): void {
+  runId += 1; // invalidate any pending listen retry so Resume starts from a clean slate
+  paused = true;
+  element('pause-button').textContent = 'Resume';
+  const background = backgroundSession.isBackground();
+  setStatus(recognitionFailureMessage(error, background, usingNativeSpeech()));
+  failureNotice = recognitionFailureNotice(error, background);
+  syncBackground();
 }
 
 async function handleSpokenAnswer(correct: boolean, card: Card, token: number): Promise<void> {
@@ -421,6 +459,7 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
 function togglePause(): void {
   if (settings.mode === 'flip') return;
   paused = !paused;
+  failureNotice = null;
   element('pause-button').textContent = paused ? 'Resume' : 'Pause';
   if (paused) {
     if (settings.mode === 'answer' && !revealed) {
@@ -434,17 +473,20 @@ function togglePause(): void {
     setStatus('Paused. Press Resume when you’re ready.');
   } else {
     speaker.resume();
+    recognitionMonitor.reset();
     if (settings.mode === 'answer' && !revealed) {
       void runAnswer(deck[currentIndex], runId);
     } else {
       setStatus('Resumed.', settings.mode === 'auto' ? 'speaking' : '');
     }
   }
+  syncBackground();
 }
 
 function finishDeck(): void {
   stopCurrent();
   active = false;
+  backgroundSession.stop();
   sessionView.hidden = true;
   completeView.hidden = false;
   element('complete-summary').textContent = `You worked through ${deck.length.toLocaleString()} ${deck.length === 1 ? 'card' : 'cards'}.`;
@@ -454,12 +496,16 @@ function returnToSetup(): void {
   stopCurrent();
   active = false;
   paused = false;
+  backgroundSession.stop();
   sessionView.hidden = true;
   completeView.hidden = true;
   setupView.hidden = false;
 }
 
-form.addEventListener('submit', startDeck);
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void startDeck();
+});
 form.addEventListener('change', (event) => {
   const target = event.target as HTMLInputElement;
   if (target.name === 'mode') {
@@ -486,9 +532,24 @@ element('next-button').addEventListener('click', nextCard);
 element('pause-button').addEventListener('click', togglePause);
 element('end-session').addEventListener('click', returnToSetup);
 element('new-deck').addEventListener('click', returnToSetup);
-element('restart-deck').addEventListener('click', () => startDeck());
+element('restart-deck').addEventListener('click', () => { void startDeck(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && active && settings.mode !== 'flip' && !paused) togglePause();
+  const hiddenState = { hidden: document.hidden, active, mode: settings.mode, paused, native: usingNativeSpeech() };
+  if (shouldAutoPauseWhenHidden(hiddenState)) togglePause();
 });
+
+// Notification buttons drive the same code paths as the on-screen controls.
+void backgroundSession.onAction((action, source) => dispatchBackgroundAction(action, {
+  isActive: () => active && settings.mode !== 'flip',
+  isPaused: () => paused,
+  isListening: () => recognition !== null,
+  pause: togglePause,
+  resume: togglePause,
+  skip: nextCard,
+  stop: returnToSetup,
+}, source));
+void backgroundSession.watchAppState();
+// Clear any notification left behind by a previous page load.
+backgroundSession.stop();
 
 void loadVocabulary();

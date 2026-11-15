@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-community/speech-recognition';
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
+import { classifyNativeRecognitionError } from './recognition-errors';
 
 export interface SpeechRecognitionAlternativeLike {
   transcript: string;
@@ -102,8 +103,8 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
       this.onresult?.({ results } as unknown as SpeechRecognitionEventLike);
     } catch (error) {
       if (!this.aborted) {
-        const message = String(error).toLowerCase();
-        this.fail(message.includes('permission') || message.includes('denied') ? 'not-allowed' : 'no-speech');
+        const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
+        this.fail(classifyNativeRecognitionError(message));
       }
     } finally {
       this.finish();
@@ -111,6 +112,7 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
   }
 
   private fail(error: string): void {
+    if (this.aborted) return;
     this.onerror?.({ error } as SpeechRecognitionErrorEventLike);
   }
 

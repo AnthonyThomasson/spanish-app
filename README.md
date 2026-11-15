@@ -90,4 +90,22 @@ Scan the QR code with the phone (on the same Wi-Fi) and open the downloaded APK.
 
 `npm test` runs the unit tests for the script's helper logic with Node's built-in test runner.
 
+### Background sessions
+
+On Android, **Auto listen** and **Speak answers** keep running when you switch apps or turn the screen off or lock the phone. While a session runs, a foreground-service notification shows the mode and progress (for example `Auto listen · 12 / 80`), the current prompt, and the answer once it is revealed. Android 13+ asks for notification permission the first time; if you decline, the session still runs in the background but the notification may be hidden.
+
+The notification has the same controls as the screen:
+
+- **Pause / Resume** pauses or resumes the session.
+- **Skip** moves to the next card. Like the on-screen Skip, skipping while paused resumes playback on the next card.
+- **Stop** ends the session and returns to deck setup.
+
+The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. Speak answers ignores the brief audio-focus change caused by its own speech recognizer while it is listening.
+
+Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background. Auto listen never claims the microphone: its service only plays audio.
+
+Flip cards is not a background session and does not use the service. In a browser, Auto listen and Speak answers still pause when the tab is hidden.
+
+Speak answers needs the microphone, and Android may refuse microphone access to an app that is not in the foreground. If speech recognition fails in the background (microphone access blocked, repeated start failures, or several attempts in a row that hear nothing while the app is in the background), the session pauses and both the screen and the notification say why (the notification keeps it to one line, for example “Mic blocked — open app, press Resume”; the screen has the full message), with a Resume button; open the app and press Resume to continue. Temporary network or busy-recognizer errors are retried quietly with a growing delay (up to 4 seconds); after about ten in a row the session pauses with “Speech recognition isn’t reachable — check your connection, then press Resume.” Client-side errors count like microphone failures. Auto listen does not use the microphone and is unaffected.
+
 The `release/` directory is ignored by Git because the APK contains the copyrighted vocabulary. Do not upload the APK or QR code publicly.
