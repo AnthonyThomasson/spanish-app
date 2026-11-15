@@ -130,6 +130,13 @@ class PipelineTests(unittest.TestCase):
         ])
         self.assertEqual([len(chapter["words"]) for chapter in vocabulary["chapters"]], [2, 0])
 
+    def test_os_card_repeating_the_chapters_se_card_is_dropped(self):
+        vocabulary, _ = build([
+            two_columns([("se", "himself, herself"), ("os", "yourselves"), ("pintar", "to paint")], "p010_00.png"),
+        ])
+        pairs = [(w["spanish"], w["english"]) for w in vocabulary["chapters"][0]["words"]]
+        self.assertEqual(pairs, [("se", "himself, herself"), ("pintar", "to paint")])
+
     def test_argentine_map_applies_to_words_and_sentences(self):
         vocabulary, _ = build([
             two_columns([("el coche", "the car"), ("la patata", "the potato"), ("el carro de compras", "the shopping cart")], "p010_00.png"),

@@ -219,6 +219,10 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
     lexicon = Lexicon.from_word_cards(card for _, _, card in entries)
     indexes = {"present": lexicon.tu_present_index(), "imperative": lexicon.tu_imperative_index()}
     seen = set()
+    # Chapters that already list a plain "se" card (himself, themselves, yourselves...).
+    chapters_with_se = {
+        number for number, _, card in entries if card.kind == WORD and card.spanish.strip().lower() == "se"
+    }
     for chapter_number, page, card in entries:
         spanish = card.spanish
         if card.needs_second_person_pass:
@@ -232,6 +236,9 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
             spanish = outcome.spanish
         if card.kind == WORD:
             converted, english = convert_word_card(spanish, card.english)
+            if converted == "se" and spanish.lower() == "os" and chapter_number in chapters_with_se:
+                report["duplicates.word"] += 1  # "os" -> "se" would repeat the chapter's own "se" card
+                continue
             if (converted, english) != (spanish, card.english):
                 report["second_person.word_cards_converted"] += 1
             spanish = converted

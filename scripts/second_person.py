@@ -328,6 +328,9 @@ def convert_tu_present(spanish: str, english: str, lexicon: Lexicon, present_ind
     # "te llamas": a reflexive/clitic tú verb must have been converted (or already equal vos).
     vos_equal = {form for form, infinitives in present_index.items() if {vos_present(i) for i in infinitives} == {form}}
     for te_verb in re.finditer(rf"\bte\s+({WORD})", converted, re.IGNORECASE):
+        # A negative command ("No te vayas.") is present subjunctive: the same form for tú and vos.
+        if re.search(r"\bno\s+$", converted[: te_verb.start()], re.IGNORECASE):
+            continue
         word = te_verb.group(1).lower()
         if re.search(r"(?:as|es)$", word) and word not in vos_equal and word not in {"mas", "tres", "es", "días", "veces"}:
             return Outcome("dropped", spanish, "unverified_tu_verb")
@@ -349,6 +352,13 @@ def convert_sentence(spanish: str, english: str, lexicon: Lexicon, indexes: dict
         return vosotros
     if UD_MARKERS.search(spanish) and not re.search(r"\btú\b|\bcontigo\b|\bti\b", spanish, re.IGNORECASE):
         return Outcome("unchanged", spanish, "formal")
+    # A negative command ("No te vayas.") is present subjunctive: the same form for tú and vos.
+    if (
+        re.match(r"^[¡¿]?no\s+(?:te\s+)?\w+(?:as|es)\b", spanish, re.IGNORECASE)
+        and re.match(r"^(?:please\s+)?(?:don't|do not|never)\b", english, re.IGNORECASE)
+        and not re.search(r"\btú\b|\bcontigo\b|\bti\b", spanish, re.IGNORECASE)
+    ):
+        return Outcome("unchanged", spanish, "negative_command")
     imperative = convert_tu_imperative(spanish, english, lexicon, indexes["imperative"])
     if imperative is not None:
         return imperative

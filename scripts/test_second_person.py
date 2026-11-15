@@ -30,10 +30,10 @@ class TuToVosTests(unittest.TestCase):
     def test_tu_forms_that_equal_vos_are_kept(self):
         outcome = run("¿Estás mojado?", "Are you wet?")
         self.assertEqual((outcome.status, outcome.spanish), ("unchanged", "¿Estás mojado?"))
-        self.assertEqual(run("¿Qué comiste?", "What did you eat?").status, "unchanged")
+        self.assertEqual(run("¿Qué pintaste?", "What did you paint?").status, "unchanged")
 
     def test_contigo_becomes_con_vos(self):
-        self.assertEqual(run("Quiero ir contigo.", "I want to go with you.").spanish, "Quiero ir con vos.")
+        self.assertEqual(run("Quiero bailar contigo.", "I want to dance with you.").spanish, "Quiero bailar con vos.")
 
     def test_present_of_iar_verbs_is_not_mistaken_for_imperfect(self):
         lexicon = Lexicon()
@@ -42,18 +42,18 @@ class TuToVosTests(unittest.TestCase):
         self.assertEqual(outcome.status, "dropped")
 
     def test_unknown_verb_is_dropped_not_guessed(self):
-        outcome = run("¿Cuánto cobras?", "How much do you charge?")
+        outcome = run("¿Cuánto pesas?", "How much do you weigh?")
         self.assertEqual((outcome.status, outcome.reason), ("dropped", "unverified_second_person"))
 
     def test_formal_sentences_are_untouched(self):
         self.assertEqual(run("¿Canta Ud. bien?", "Do you sing well?").status, "unchanged")
 
     def test_nouns_that_look_like_tu_verbs_are_not_converted(self):
-        outcome = run("Las cuentas son altas.", "The bills are high.")
+        outcome = run("Las cuerdas son largas.", "The ropes are long.")
         self.assertEqual(outcome.status, "unchanged")
 
     def test_sentences_without_you_are_unchanged(self):
-        self.assertEqual(run("Te veo mañana.", "I see you tomorrow.").status, "unchanged")
+        self.assertEqual(run("Te pinto mañana.", "I paint you tomorrow.").status, "unchanged")
 
 
 class ImperativeTests(unittest.TestCase):
@@ -68,14 +68,14 @@ class ImperativeTests(unittest.TestCase):
         self.assertEqual(run("Siéntate allá.", "Sit down there.").spanish, "Sentate allá.")
 
     def test_statements_that_look_like_commands_are_kept(self):
-        self.assertEqual(run("Come mucho.", "He eats a lot.").status, "unchanged")
-        self.assertEqual(run("Se lo doy.", "I give it to him.").status, "unchanged")
+        self.assertEqual(run("Zorba come mucho.", "Zorba eats a lot.").status, "unchanged")
+        self.assertEqual(run("Se lo pinto.", "I paint it for him.").status, "unchanged")
 
     def test_command_with_unknown_verb_and_pronoun_is_dropped(self):
         self.assertEqual(run("Ordénamelo ya.", "Sort it for me now.").status, "dropped")
 
     def test_nosotros_commands_are_not_mistaken_for_tu_commands(self):
-        self.assertEqual(run("Comprémoselo.", "Let's buy it for her.").status, "unchanged")
+        self.assertEqual(run("Pintémoselo.", "Let's paint it for her.").status, "unchanged")
 
     def test_formal_commands_are_untouched(self):
         self.assertEqual(run("Pinte la cerca.", "Paint the fence.").status, "unchanged")
@@ -147,6 +147,10 @@ class TuLeakTests(unittest.TestCase):
     def test_tu_reflexive_verbs_without_you_in_english(self):
         self.assertEqual(run("Te llamas Zorba.", "Your name is Zorba.").status, "dropped")
         self.assertEqual(run("¿Cómo te sientes?", "How are you feeling?").status, "dropped")
+
+    def test_negative_commands_with_te_are_kept(self):
+        for spanish, english in [("No te vayas.", "Don't leave."), ("No te quejes del frío.", "Don't complain about the cold.")]:
+            self.assertNotEqual(run(spanish, english).status, "dropped", spanish)
 
     def test_ocr_slipped_imperative_is_dropped(self):
         self.assertEqual(run("Enséñanosa.", "Show us.").status, "dropped")

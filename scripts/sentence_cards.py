@@ -209,8 +209,17 @@ def parse_image(image: dict, report: Counter) -> list[Card]:
         spanish = fix_doubled_punctuation(clean_text(re.sub(r"^[}>{›»|~]+\s*", "", spanish), "es"))
         english = fix_doubled_punctuation(clean_text(re.sub(r"^[}>{›»|~]+\s*", "", english), "en"))
         # Truncation is judged before punctuation is copied across.
-        if looks_cut_off(spanish, english):
+        # (a side that merely lacks its full stop is fine: "I see her" next to "La veo.")
+        if not has_terminal(spanish) and not has_terminal(english) and looks_cut_off(spanish, english):
             report["sentences.rejected.cut_off"] += 1
+            continue
+        # A short Spanish half with no full stop beside a long English sentence was cut by the page edge
+        # ("No vayamos" next to "Let's not go to the museum."); a closed short command is fine.
+        if (
+            not has_terminal(spanish) and has_terminal(english)
+            and len(spanish.split()) <= 2 and len(english.split()) >= 2 * len(spanish.split()) + 2
+        ):
+            report["sentences.rejected.length_mismatch"] += 1
             continue
         spanish = fix_spanish(spanish)
         english = fix_english(english, spanish)

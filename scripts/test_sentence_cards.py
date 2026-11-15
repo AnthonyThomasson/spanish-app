@@ -146,8 +146,8 @@ class SentenceImageTests(unittest.TestCase):
         self.assertNotIn("..", cards[1].spanish)
 
     def test_doubled_punctuation_is_collapsed(self):
-        cards, _ = parse(two_columns([("Apagá la luz..", "Turn off the light.")]))
-        self.assertEqual(cards[0].spanish, "Apagá la luz.")
+        cards, _ = parse(two_columns([("Apagá la vela..", "Blow out the candle.")]))
+        self.assertEqual(cards[0].spanish, "Apagá la vela.")
 
     def test_terminal_punctuation_is_copied_to_the_other_side(self):
         cards, _ = parse(two_columns([("El loro habla mucho", "The parrot talks a lot.")]))
@@ -161,6 +161,18 @@ class SentenceImageTests(unittest.TestCase):
         ]:
             cards, _ = parse(two_columns([(spanish, english)]))
             self.assertEqual(cards, [], spanish)
+
+    def test_english_without_a_full_stop_is_not_cut_off(self):
+        cards, _ = parse(two_columns([("Zorba la mira.", "Zorba looks at her"), ("Zorba lo pinta.", "Zorba paints it")]))
+        self.assertEqual([c.english for c in cards], ["Zorba looks at her.", "Zorba paints it."])
+
+    def test_short_spanish_next_to_long_english_is_dropped(self):
+        cards, _ = parse(two_columns([("No saltemos", "Let's not jump over the old garden wall.")]))
+        self.assertEqual(cards, [])
+
+    def test_closed_short_commands_are_kept(self):
+        cards, _ = parse(two_columns([("Pintalo.", "Paint it for me."), ("Saltemos.", "Let's jump.")]))
+        self.assertEqual(len(cards), 2)
 
     def test_garbled_english_is_dropped(self):
         cards, _ = parse(two_columns([("¿Dónde duerme el loro?", "Where does the parrot sleep'?")]))
