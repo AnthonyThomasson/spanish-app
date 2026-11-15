@@ -184,6 +184,7 @@ async function loadVocabulary(): Promise<void> {
 }
 
 function renderChapters(): void {
+  chapterCountLabels.clear();
   chapters.forEach((chapter, index) => {
     const label = document.createElement('label');
     label.className = 'chapter-option';
