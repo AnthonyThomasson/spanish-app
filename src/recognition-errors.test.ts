@@ -26,12 +26,15 @@ describe('classifyNativeRecognitionError', () => {
     expect(classifyNativeRecognitionError('Something unexpected')).toBe('audio-capture');
   });
 
-  it('treats network, client and busy errors as transient, not audio failures', () => {
+  it('treats network and busy errors as transient, not audio failures', () => {
     expect(classifyNativeRecognitionError('Network error')).toBe('network');
     expect(classifyNativeRecognitionError('Network timeout')).toBe('network');
     expect(classifyNativeRecognitionError('error from server')).toBe('network');
-    expect(classifyNativeRecognitionError('Client side error')).toBe('network');
     expect(classifyNativeRecognitionError('RecognitionService busy')).toBe('busy');
+  });
+
+  it('counts a client side error like an audio failure', () => {
+    expect(classifyNativeRecognitionError('Client side error')).toBe('audio-capture');
   });
 });
 
@@ -128,38 +131,88 @@ describe('RecognitionMonitor', () => {
   });
 });
 
+describe('recognitionFailureMessage for unreachable recognition', () => {
+  it('asks the user to check their connection', () => {
+    expect(recognitionFailureMessage('network', false, true)).toBe('Speech recognition isn’t reachable — check your connection, then press Resume.');
+    expect(recognitionFailureMessage('busy', true, true)).toMatch(/check your connection/);
+  });
+});
+
 describe('recognitionFailureNotice', () => {
-  it('explains a background block and a foreground failure for the notification', () => {
-    expect(recognitionFailureNotice('not-allowed', true)).toBe('Microphone blocked in the background — open the app and press Resume');
-    expect(recognitionFailureNotice('no-speech', true)).toMatch(/background/);
-    expect(recognitionFailureNotice('audio-capture', false)).toBe('The microphone isn’t responding — press Resume to retry');
-    expect(recognitionFailureNotice('not-allowed', false)).toMatch(/Resume/);
+  it('stays short enough for one notification line', () => {
+    const cases: Array<[string, boolean]> = [
+      ['not-allowed', true], ['not-allowed', false], ['no-speech', true], ['audio-capture', false], ['network', false],
+    ];
+    for (const [error, background] of cases) expect(recognitionFailureNotice(error, background).length).toBeLessThanOrEqual(45);
+  });
+
+  it('explains each failure', () => {
+    expect(recognitionFailureNotice('not-allowed', true)).toBe('Mic blocked — open app, press Resume');
+    expect(recognitionFailureNotice('no-speech', true)).toBe('Mic stopped — open app, press Resume');
+    expect(recognitionFailureNotice('not-allowed', false)).toBe('Mic blocked — check settings, press Resume');
+    expect(recognitionFailureNotice('audio-capture', false)).toBe('Mic not responding — press Resume');
+    expect(recognitionFailureNotice('network', false)).toBe('Speech offline — check connection, Resume');
   });
 });
 
 describe('recognitionRetryDelay', () => {
-  it('retries quickly, but backs off when the recognizer is busy', () => {
+  it('retries quickly after silence or a microphone error', () => {
     expect(recognitionRetryDelay('no-speech')).toBe(250);
-    expect(recognitionRetryDelay('network')).toBe(250);
-    expect(recognitionRetryDelay('busy')).toBeGreaterThan(250);
+    expect(recognitionRetryDelay('audio-capture')).toBe(250);
+  });
+
+  it('backs off exponentially for transient errors, up to a cap', () => {
+    expect([1, 2, 3, 4, 5, 6].map((n) => recognitionRetryDelay('network', n))).toEqual([250, 500, 1000, 2000, 4000, 4000]);
+    expect(recognitionRetryDelay('network', 50)).toBe(4000);
+  });
+
+  it('starts a busy recognizer at a longer delay', () => {
+    expect(recognitionRetryDelay('busy', 1)).toBe(1000);
+    expect(recognitionRetryDelay('busy', 2)).toBe(2000);
+    expect(recognitionRetryDelay('busy', 5)).toBe(4000);
   });
 });
 
 describe('RecognitionMonitor transient errors', () => {
   const foreground = { native: true, hidden: false };
 
-  it('never pauses for network, client or busy errors', () => {
+  it('retries network and busy errors, then pauses after about ten in a row', () => {
     const monitor = new RecognitionMonitor();
-    for (let i = 0; i < 20; i++) expect(monitor.handle('network', foreground)).toBe('retry');
-    for (let i = 0; i < 20; i++) expect(monitor.handle('busy', foreground)).toBe('retry');
+    for (let i = 0; i < 9; i++) expect(monitor.handle(i % 2 ? 'busy' : 'network', foreground)).toBe('retry');
+    expect(monitor.handle('network', foreground)).toBe('pause');
   });
 
-  it('does not count them toward the audio-failure pause or clear it', () => {
+  it('never pauses a browser for transient errors', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 30; i++) expect(monitor.handle('network', { native: false, hidden: false })).toBe('retry');
+  });
+
+  it('is independent of the audio-failure count', () => {
     const monitor = new RecognitionMonitor();
     monitor.handle('audio-capture', foreground);
     monitor.handle('network', foreground);
     monitor.handle('busy', foreground);
     monitor.handle('audio-capture', foreground);
     expect(monitor.handle('audio-capture', foreground)).toBe('pause');
+  });
+
+  it('restarts the transient count after silence proves the recognizer works, or on reset', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 9; i++) monitor.handle('network', foreground);
+    monitor.handle('no-speech', foreground);
+    for (let i = 0; i < 9; i++) expect(monitor.handle('network', foreground)).toBe('retry');
+    monitor.reset();
+    for (let i = 0; i < 9; i++) expect(monitor.handle('network', foreground)).toBe('retry');
+  });
+
+  it('reports the retry delay for the current run of transient errors', () => {
+    const monitor = new RecognitionMonitor();
+    monitor.handle('network', foreground);
+    expect(monitor.retryDelay('network')).toBe(250);
+    monitor.handle('network', foreground);
+    monitor.handle('network', foreground);
+    expect(monitor.retryDelay('network')).toBe(1000);
+    monitor.handle('no-speech', foreground);
+    expect(monitor.retryDelay('no-speech')).toBe(250);
   });
 });

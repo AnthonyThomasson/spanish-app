@@ -393,7 +393,7 @@ function startListening(card: Card, token: number): void {
     // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
     if (event.error === 'aborted' || token !== runId || !active || paused) return;
     const verdict = recognitionMonitor.handle(event.error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
-    retryDelay = recognitionRetryDelay(event.error);
+    retryDelay = recognitionMonitor.retryDelay(event.error);
     if (verdict === 'pause') {
       handled = true;
       pauseAfterRecognitionFailure(event.error);
