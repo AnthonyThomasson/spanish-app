@@ -45,12 +45,12 @@ add('es', 'hundreds', {
 add('es', 'thousand', { mil: 1000 });
 add('es', 'million', { millon: 1_000_000, millones: 1_000_000 });
 
+const bothLanguages = new Map([...tables.en, ...tables.es]);
+bothLanguages.delete('once');
+
 /** The number words to read: the answer's own language, or both when unknown (without Spanish "once"). */
 function wordsFor(language?: NumberLanguage): Map<string, NumberWord> {
-  if (language) return tables[language];
-  const both = new Map([...tables.en, ...tables.es]);
-  both.delete('once');
-  return both;
+  return language ? tables[language] : bothLanguages;
 }
 
 const small: Kind[] = ['unit', 'teen', 'tens', 'tensunit'];
@@ -110,7 +110,7 @@ export function canonicalizeNumbers(tokens: string[], language?: NumberLanguage)
   let index = 0;
   while (index < tokens.length) {
     // English "a hundred" and "a thousand" are 100 and 1000.
-    const article = tokens[index] === 'a' && language !== 'es' && ['hundred', 'thousand', 'million'].includes(words.get(tokens[index + 1])?.kind ?? '');
+    const article = tokens[index] === 'a' && ['hundred', 'thousand', 'million'].includes(tokens[index + 1]);
     const number = readNumber(words, tokens, article ? index + 1 : index);
     if (number) {
       result.push(String(number.value));

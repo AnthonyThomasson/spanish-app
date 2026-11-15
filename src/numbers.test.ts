@@ -79,6 +79,8 @@ describe('canonicalizeNumbers by language', () => {
   it('keeps "a" when it is not before hundred, thousand or million', () => {
     expect(canonical('a cat', 'en')).toBe('a cat');
     expect(canonical('voy a cien', 'es')).toBe('voy a 100');
+    expect(canonical('voy a cien')).toBe('voy a 100');
+    expect(canonical('voy a mil')).toBe('voy a 1000');
   });
 });
 
