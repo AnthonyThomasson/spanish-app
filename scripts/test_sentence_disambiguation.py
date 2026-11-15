@@ -1,11 +1,12 @@
+import re
 import unittest
 from collections import Counter
 from pathlib import Path
 
 from sentence_disambiguation import (
     classify_command,
-    collision_groups,
     FIXED_TAGS,
+    collision_groups,
     disambiguate_sentences,
     insert_tag,
     tense_of,
@@ -64,11 +65,25 @@ class TenseTests(unittest.TestCase):
 
 
 class SpokenTextInStepTests(unittest.TestCase):
-    def test_the_app_strips_every_fixed_tag(self):
+    """src/spoken-text.ts must strip exactly the tags this module can emit."""
+
+    def tag_pattern(self):
         source = (Path(__file__).resolve().parent.parent / "src" / "spoken-text.ts").read_text()
-        for tag in FIXED_TAGS:
-            self.assertIn(tag.replace(".", "\\."), source, f"src/spoken-text.ts does not strip ({tag})")
-        self.assertIn("Sp\\. ", source)
+        match = re.search(r"const DISAMBIGUATION_TAG =\s*/(.+)/g;", source)
+        self.assertIsNotNone(match, "DISAMBIGUATION_TAG not found in src/spoken-text.ts")
+        return match.group(1)
+
+    def test_the_regex_lists_exactly_the_fixed_tags_and_the_hint(self):
+        alternatives = re.search(r"\\\(\(\?:(.*?)\)\\\)", self.tag_pattern()).group(1).split("|")
+        hint = [alternative for alternative in alternatives if alternative.startswith("Sp")]
+        fixed = {alternative.replace("\\.", ".") for alternative in alternatives if not alternative.startswith("Sp")}
+        self.assertEqual(fixed, set(FIXED_TAGS))
+        self.assertEqual(len(hint), 1)
+
+    def test_the_regex_strips_every_tag_the_module_emits(self):
+        pattern = re.compile(self.tag_pattern())
+        for tag in (*FIXED_TAGS, "Sp. fue buena"):
+            self.assertEqual(pattern.sub("", insert_tag("It was fine.", tag)), "It was fine.", tag)
 
 
 class DisambiguationTests(unittest.TestCase):
@@ -157,6 +172,33 @@ class DisambiguationTests(unittest.TestCase):
     def test_ustedes_spelled_out_is_a_duplicate_too(self):
         cards, _ = run(("Canten ustedes.", "Sing."), ("Canten.", "Sing."), ("Cantá.", "Sing."))
         self.assertEqual([spanish for spanish, _ in cards], ["Canten.", "Cantá."])
+
+    def test_accents_keep_prompts_apart_when_merging(self):
+        cards, report = run(("Hablo.", "I talk."), ("Habló.", "He talked."))
+        self.assertEqual(cards, [("Hablo.", "I talk."), ("Habló.", "He talked.")])
+        self.assertEqual(report["disambiguation.merged_spanish"], 0)
+        # ...but punctuation and case alone do not make a different prompt.
+        cards, _ = run(("¿Hablo?", "Do I talk?"), ("¿hablo?", "Am I talking?"))
+        self.assertEqual(cards, [("¿Hablo?", "Do I talk? / Am I talking?")])
+
+    def test_a_truncated_copy_of_an_answer_is_replaced_by_the_full_one(self):
+        cards, report = run(
+            ("Si Ana cantara, ella ganaría.", "If Ana sang"),
+            ("Si Ana cantara, ella ganaría.", "If Ana sang she would win."),
+        )
+        self.assertEqual(cards, [("Si Ana cantara, ella ganaría.", "If Ana sang she would win.")])
+        self.assertEqual(report["disambiguation.truncated_replaced"], 1)
+        # The full answer first, the fragment second: the fragment is dropped.
+        cards, report = run(
+            ("Si Ana cantara, ella ganaría.", "If Ana sang she would win."),
+            ("Si Ana cantara, ella ganaría.", "If Ana sang"),
+        )
+        self.assertEqual(cards[0][1], "If Ana sang she would win.")
+        self.assertEqual(report["disambiguation.duplicates_dropped"], 1)
+
+    def test_a_word_that_merely_starts_the_same_is_not_a_truncation(self):
+        cards, _ = run(("Ana canta.", "Ana sings."), ("Ana canta.", "Ana singsong."))
+        self.assertEqual(cards[0][1], "Ana sings. / Ana singsong.")
 
     def test_este_is_not_a_preterit(self):
         self.assertIsNone(tense_of("este"))

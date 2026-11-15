@@ -192,15 +192,15 @@ describe('sentence matching: English contractions', () => {
 
 describe('sentence matching: disambiguation tags', () => {
   it('accepts a tagged English answer with or without the tag', () => {
-    expect(isCorrectAnswer('drink', 'Drink (vos).', 'sentence')).toBe(true);
-    expect(isCorrectAnswer('drink vos', 'Drink (vos).', 'sentence')).toBe(true);
-    expect(isCorrectAnswer('where are you from', 'Where are you from (Ud.)?', 'sentence')).toBe(true);
-    expect(isCorrectAnswer('i want to help them', 'I want to help them (m.).', 'sentence')).toBe(true);
-    expect(isCorrectAnswer('it was good', 'It was good (Sp. fue buena).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('sing', 'Sing (vos).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('sing vos', 'Sing (vos).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('where do you work', 'Where do you work (Ud.)?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('i want to call them', 'I want to call them (m.).', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('it was cold', 'It was cold (Sp. fue frío).', 'sentence')).toBe(true);
   });
 
   it('still rejects a different sentence', () => {
-    expect(isCorrectAnswer('eat', 'Drink (vos).', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('eat', 'Sing (vos).', 'sentence')).toBe(false);
   });
 });
 

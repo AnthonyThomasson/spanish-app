@@ -39,25 +39,27 @@ describe('spokenText for other cards', () => {
 
 describe('spokenText for sentence cards with a disambiguation tag', () => {
   it('leaves out the tag before the closing punctuation', () => {
-    expect(spokenText('Drink (vos).', 'sentence')).toBe('Drink.');
-    expect(spokenText('Don\'t yell (Ud.).', 'sentence')).toBe("Don't yell.");
-    expect(spokenText('Look (Uds.).', 'sentence')).toBe('Look.');
-    expect(spokenText('Where are you from (Ud.)?', 'sentence')).toBe('Where are you from?');
-    expect(spokenText('I want to help them (m.).', 'sentence')).toBe('I want to help them.');
-    expect(spokenText('I wanted to go (preterit).', 'sentence')).toBe('I wanted to go.');
-    expect(spokenText('I wanted to go (imperfect).', 'sentence')).toBe('I wanted to go.');
-    expect(spokenText('He is going to give it to me (pronoun attached).', 'sentence')).toBe('He is going to give it to me.');
-    expect(spokenText('The concert was fantastic (Sp. fue).', 'sentence')).toBe('The concert was fantastic.');
-    expect(spokenText('It was good (Sp. fue buena)', 'sentence')).toBe('It was good');
+    expect(spokenText('Sing (vos).', 'sentence')).toBe('Sing.');
+    expect(spokenText("Don't wait (Ud.).", 'sentence')).toBe("Don't wait.");
+    expect(spokenText('Hold the door (Uds.).', 'sentence')).toBe('Hold the door.');
+    expect(spokenText('Where do you work (Ud.)?', 'sentence')).toBe('Where do you work?');
+    expect(spokenText('I want to call them (m.).', 'sentence')).toBe('I want to call them.');
+    expect(spokenText('I want to call them (f.).', 'sentence')).toBe('I want to call them.');
+    expect(spokenText('I painted the fence (preterit).', 'sentence')).toBe('I painted the fence.');
+    expect(spokenText('I was painting the fence (imperfect).', 'sentence')).toBe('I was painting the fence.');
+    expect(spokenText('She is going to lend it to him (pronoun before).', 'sentence')).toBe('She is going to lend it to him.');
+    expect(spokenText('She is going to lend it to him (pronoun attached).', 'sentence')).toBe('She is going to lend it to him.');
+    expect(spokenText('The party was lively (Sp. fue).', 'sentence')).toBe('The party was lively.');
+    expect(spokenText('It was cold (Sp. fue frío)', 'sentence')).toBe('It was cold');
   });
 
   it('leaves out the tag of every alternative of a merged card', () => {
-    expect(spokenText('Drink (vos). / Have a drink (vos).', 'sentence')).toBe('Drink. / Have a drink.');
+    expect(spokenText('Sing (vos). / Have a sing (vos).', 'sentence')).toBe('Sing. / Have a sing.');
   });
 
-  it('keeps a sentence\'s own parentheticals, which carry meaning', () => {
-    expect(spokenText('The meal is (tastes) good.', 'sentence')).toBe('The meal is (tastes) good.');
-    expect(spokenText("Five (minutes) to three (o'clock).", 'sentence')).toBe("Five (minutes) to three (o'clock).");
+  it("keeps a sentence's own parentheticals, which carry meaning", () => {
+    expect(spokenText('The tea is (tastes) sweet.', 'sentence')).toBe('The tea is (tastes) sweet.');
+    expect(spokenText("Ten (minutes) past four (o'clock).", 'sentence')).toBe("Ten (minutes) past four (o'clock).");
   });
 
   it('does not strip a tag from a word card, which keeps "(male)" and the like', () => {

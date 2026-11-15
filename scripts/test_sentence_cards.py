@@ -2,7 +2,7 @@ import unittest
 from collections import Counter
 
 from ocr_fixtures import image, obs, two_columns
-from ocr_layout import detect_language, group_wrapped_lines, match_rows, merge_row_observations, split_sentences
+from ocr_layout import clean_text, detect_language, group_wrapped_lines, match_rows, merge_row_observations, split_sentences
 from sentence_cards import parse_image
 
 
@@ -42,6 +42,15 @@ class LayoutHelperTests(unittest.TestCase):
         pairs, unmatched = match_rows(left, right)
         self.assertEqual(len(pairs), 1)
         self.assertEqual(unmatched, 2)
+
+
+class OcrCorrectionTests(unittest.TestCase):
+    def test_a_tempo_is_a_spanish_side_slip_for_a_tiempo(self):
+        self.assertEqual(clean_text("Ana llegó a tempo.", "es"), "Ana llegó a tiempo.")
+        self.assertEqual(clean_text("Llegaron a tempo a la fiesta.", "es"), "Llegaron a tiempo a la fiesta.")
+
+    def test_a_tempo_in_english_is_left_alone(self):
+        self.assertEqual(clean_text("Play the next bar a tempo.", "en"), "Play the next bar a tempo.")
 
 
 class SentenceImageTests(unittest.TestCase):

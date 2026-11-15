@@ -11,7 +11,7 @@ optional when answering and does not speak:
     (pronoun before) (pronoun attached)   me la va a dar / va a dármela
     (Sp. word)                     fallback: the distinguishing Spanish word(s)
 
-src/spoken-text.ts strips exactly these tags for sentence cards; keep TAG_PATTERN there in step with this list.
+src/spoken-text.ts strips exactly these tags for sentence cards; keep DISAMBIGUATION_TAG there in step (a test compares it with FIXED_TAGS) with this list.
 Spanish-side collisions (one Spanish prompt, several English answers) are merged into one card whose English
 lists the alternatives with " / ". Word and conjugation cards are never touched.
 """
@@ -24,7 +24,11 @@ from spanish_verbs import strip_accents
 
 SENTENCE = "sentence"
 # The fixed tags (besides "Sp. <words>"); src/spoken-text.ts strips these, and a test keeps the two in step.
-FIXED_TAGS = ("vos", "Ud.", "Uds.", "m.", "f.", "preterit", "imperfect", "pronoun before", "pronoun attached")
+VOS, UD, UDS = "vos", "Ud.", "Uds."
+MASCULINE, FEMININE = "m.", "f."
+PRETERIT, IMPERFECT_TENSE = "preterit", "imperfect"
+BEFORE, ATTACHED = "pronoun before", "pronoun attached"
+FIXED_TAGS = (VOS, UD, UDS, MASCULINE, FEMININE, PRETERIT, IMPERFECT_TENSE, BEFORE, ATTACHED)
 TOKEN = re.compile(r"[a-záéíóúüñ]+")
 SUBJECTS = {"yo", "el", "ella", "ellos", "ellas", "nosotros", "ud", "uds", "vos"}
 CLITICS = {"se", "te", "me", "nos", "lo", "la", "los", "las", "le", "les"}
@@ -34,6 +38,15 @@ def fold(text: str) -> str:
     """The comparison form of a prompt: lowercase, accent-free, no punctuation."""
     text = strip_accents(text.lower().replace("ñ", "\0"))
     return " ".join(re.sub(r"[^a-z0-9\0]+", " ", text).replace("\0", "ñ").split())
+
+
+def spanish_key(text: str) -> str:
+    """Identity of a Spanish prompt: casefolded, punctuation removed, accents kept ('Hablo' is not 'Habló')."""
+    return " ".join(re.sub(r"[¿?¡!.,;:\"'“”‘’()\-–]+", " ", text.casefold()).split())
+
+
+def is_prefix_of(shorter: str, longer: str) -> bool:
+    return longer == shorter or longer.startswith(shorter + " ")
 
 
 def tokens(text: str) -> list[str]:
@@ -63,9 +76,9 @@ NOT_A_COMMAND_START = {
 
 def explicit_pronoun(words: list[str]) -> str | None:
     if "uds" in words or "ustedes" in words:
-        return "Uds."
+        return UDS
     if "ud" in words or "usted" in words:
-        return "Ud."
+        return UD
     return None
 
 
@@ -89,21 +102,21 @@ def classify_command(spanish: str, english: str) -> str | None:
     verb = verbs[0]
     if negative:
         if verb.endswith("s"):
-            return "vos"
+            return VOS
         if verb.endswith("n"):
-            return "Uds."
-        return "Ud." if verb[-1] in "ea" else None
+            return UDS
+        return UD if verb[-1] in "ea" else None
     if verb[-1] in "áéí":
-        return "vos"
+        return VOS
     if verb.endswith("nse"):
-        return "Uds."
+        return UDS
     if verb.endswith("se") and len(verb) > 4:
-        return "Ud."
+        return UD
     if len(verb) >= 7 and verb.endswith(("ate", "ete", "ite")):
-        return "vos"
+        return VOS
     if verb.endswith("n"):
-        return "Uds."
-    return "Ud." if verb[-1] in "ea" else None
+        return UDS
+    return UD if verb[-1] in "ea" else None
 
 
 NOT_VOS = {"atrás", "jamás", "además", "quizás", "después", "inglés", "francés", "interés", "país", "ananás"}
@@ -119,9 +132,9 @@ def classify_addressee(spanish: str, english: str) -> str | None:
         return pronoun
     for word in words:
         if word == "vos" or re.search(r"(?:aste|iste)$", word) and len(word) > 5:
-            return "vos"
+            return VOS
         if re.search(r"[áéí]s$", word) and len(word) > 3 and word not in NOT_VOS:
-            return "vos"
+            return VOS
     return None
 
 
@@ -142,9 +155,9 @@ NOT_PRETERIT = {"qué", "café", "porqué", "canapé", "bebé", "sofá"}
 
 def tense_of(word: str) -> str | None:
     if word in IMPERFECT_IRREGULAR or IMPERFECT.search(word) and len(word) > 4:
-        return "imperfect"
+        return IMPERFECT_TENSE
     if word in PRETERIT_IRREGULAR or (len(word) > 3 and word not in NOT_PRETERIT and PRETERIT_REGULAR.search(word)):
-        return "preterit"
+        return PRETERIT
     return None
 
 
@@ -193,7 +206,7 @@ def by_gender(cards: list[dict]) -> list[str] | None:
     stems = {words[0][: match.start(1)] for words, match in zip(differing, ends)}
     if len(stems) != 1:
         return None
-    return ["m." if match.group(1).endswith(("o", "os")) else "f." for match in ends]
+    return [MASCULINE if match.group(1).endswith(("o", "os")) else FEMININE for match in ends]
 
 
 def by_tense(cards: list[dict]) -> list[str] | None:
@@ -211,7 +224,7 @@ def by_clitic_position(cards: list[dict]) -> list[str] | None:
     if len(letters) != 1:  # the same words, only the pronouns moved
         return None
     attached = [any(ATTACHED_CLITIC.match(word) for word in tokens(card["spanish"])) for card in cards]
-    return ["pronoun attached" if value else "pronoun before" for value in attached]
+    return [ATTACHED if value else BEFORE for value in attached]
 
 
 def spanish_hints(cards: list[dict]) -> list[list[str]]:
@@ -255,25 +268,33 @@ def is_sentence(card: dict) -> bool:
 
 
 def merge_spanish_collisions(words: list[dict], report: Counter) -> list[dict]:
-    """One Spanish prompt with several English answers becomes one card listing them with ' / '."""
+    """One Spanish prompt with several English answers becomes one card listing them with ' / '.
+    An answer that is only the start of another (a truncated copy) is dropped in favour of the longer one."""
     first: dict[str, dict] = {}
     result = []
     for card in words:
         if not is_sentence(card):
             result.append(card)
             continue
-        key = fold(card["spanish"])
+        key = spanish_key(card["spanish"])
         kept = first.get(key)
         if kept is None:
             first[key] = kept = dict(card)
             result.append(kept)
             continue
-        alternatives = [part for part in kept["english"].split(" / ")]
-        if fold(card["english"]) not in {fold(part) for part in alternatives}:
-            kept["english"] = f"{kept['english']} / {card['english']}"
-            report["disambiguation.merged_spanish"] += 1
+        alternatives = kept["english"].split(" / ")
+        new = card["english"]
+        if any(is_prefix_of(fold(new), fold(part)) for part in alternatives):
+            report["disambiguation.duplicates_dropped"] += 1  # same answer, or a truncated copy of one
+            continue
+        shorter = [part for part in alternatives if is_prefix_of(fold(part), fold(new))]
+        if shorter:
+            alternatives = [new if part in shorter else part for part in alternatives]
+            kept["english"] = " / ".join(dict.fromkeys(alternatives))
+            report["disambiguation.truncated_replaced"] += 1
         else:
-            report["disambiguation.duplicates_dropped"] += 1
+            kept["english"] = f"{kept['english']} / {new}"
+            report["disambiguation.merged_spanish"] += 1
     return result
 
 
@@ -289,10 +310,10 @@ def drop_pronoun_duplicates(words: list[dict], report: Counter) -> list[dict]:
             by_prompt[fold(card["english"])].append(card)
     dropped = set()
     for cards in by_prompt.values():
-        plain = {fold(card["spanish"]) for card in cards}
+        plain = {spanish_key(card["spanish"]) for card in cards}
         for card in cards:
-            stripped = fold(without_trailing_pronoun(card["spanish"]))
-            if stripped != fold(card["spanish"]) and stripped in plain:
+            stripped = spanish_key(without_trailing_pronoun(card["spanish"]))
+            if stripped != spanish_key(card["spanish"]) and stripped in plain:
                 dropped.add(id(card))
     report["disambiguation.duplicates_dropped"] += len(dropped)
     return [card for card in words if id(card) not in dropped]
@@ -321,7 +342,7 @@ def collision_groups(words: list[dict]) -> list[list[dict]]:
     grouped: dict[int, list[dict]] = defaultdict(list)
     for index, card in enumerate(cards):
         grouped[find(index)].append(card)
-    return [group for group in grouped.values() if len({fold(card["spanish"]) for card in group}) > 1]
+    return [group for group in grouped.values() if len({spanish_key(card["spanish"]) for card in group}) > 1]
 
 
 def disambiguate_sentences(words: list[dict], report: Counter) -> list[dict]:
