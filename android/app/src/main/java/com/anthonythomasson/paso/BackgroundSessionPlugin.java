@@ -45,6 +45,9 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     protected void handleOnDestroy() {
         SessionEvents.clearListener(this);
         mainHandler.removeCallbacksAndMessages(null);
+        // The WebView that drives the session dies with the activity; don't leave an orphaned
+        // notification and wake lock behind.
+        BackgroundSessionService.stop(getContext());
         super.handleOnDestroy();
     }
 
@@ -93,14 +96,13 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
 
     @PluginMethod
     public void update(PluginCall call) {
-        SessionState state = new SessionState(
-            call.getString("title"),
-            call.getString("text"),
-            Boolean.TRUE.equals(call.getBoolean("paused", false)),
-            null
-        );
         try {
-            BackgroundSessionService.update(getContext(), state);
+            BackgroundSessionService.update(
+                getContext(),
+                call.getString("title"),
+                call.getString("text"),
+                Boolean.TRUE.equals(call.getBoolean("paused", false))
+            );
         } catch (RuntimeException e) {
             call.reject("Could not update the background session: " + e.getMessage());
             return;

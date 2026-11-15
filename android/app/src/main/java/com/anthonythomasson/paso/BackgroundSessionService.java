@@ -36,7 +36,11 @@ public class BackgroundSessionService extends android.app.Service {
     /** Safety net so a leaked lock cannot drain the battery forever; refreshed on every update. */
     private static final long WAKE_LOCK_TIMEOUT_MS = 6L * 60 * 60 * 1000;
 
-    /** True from the moment the plugin asks for a session until the service is destroyed. */
+    /**
+     * True from the moment the plugin asks for a session until it stops it (or the service stops
+     * itself). Deliberately not cleared in onDestroy(): a late onDestroy() of an old instance must not
+     * clobber a session that was started right after stop().
+     */
     private static volatile boolean active;
 
     private SessionState state = new SessionState(null, null, false, null);
@@ -64,11 +68,18 @@ public class BackgroundSessionService extends android.app.Service {
     }
 
     /** Refreshes the notification of the running service. No-op when no session is active. */
-    static void update(Context context, SessionState state) {
+    static void update(Context context, String title, String text, boolean paused) {
         if (!active) {
             return;
         }
-        context.startService(configureIntent(context, state));
+        // No mode extra: the service keeps the mode it was started with.
+        context.startService(
+            new Intent(context, BackgroundSessionService.class)
+                .setAction(ACTION_CONFIGURE)
+                .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_TEXT, text)
+                .putExtra(EXTRA_PAUSED, paused)
+        );
     }
 
     static void stop(Context context) {
@@ -88,7 +99,6 @@ public class BackgroundSessionService extends android.app.Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        active = true;
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createChannel();
         acquireWakeLock();
@@ -101,16 +111,22 @@ public class BackgroundSessionService extends android.app.Service {
         if (intent == null) {
             return START_NOT_STICKY;
         }
+        if (!active) {
+            // A stale notification button or a late update reached a service nobody asked for.
+            stopSession();
+            return START_NOT_STICKY;
+        }
         SessionAction action = SessionAction.fromIntentAction(intent.getAction());
         if (action != null) {
             handleNotificationAction(action);
             return START_NOT_STICKY;
         }
+        String mode = intent.getStringExtra(EXTRA_MODE);
         state = new SessionState(
             intent.getStringExtra(EXTRA_TITLE),
             intent.getStringExtra(EXTRA_TEXT),
             intent.getBooleanExtra(EXTRA_PAUSED, false),
-            intent.getStringExtra(EXTRA_MODE)
+            mode != null ? mode : state.mode()
         );
         acquireWakeLock();
         if (!state.paused()) {
@@ -139,7 +155,6 @@ public class BackgroundSessionService extends android.app.Service {
 
     @Override
     public void onDestroy() {
-        active = false;
         abandonAudioFocus();
         releaseWakeLock();
         super.onDestroy();
@@ -169,7 +184,12 @@ public class BackgroundSessionService extends android.app.Service {
             if (mediaOnly == types) {
                 throw e;
             }
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
+            } catch (RuntimeException fallbackFailure) {
+                // E.g. the system refuses a foreground start: give up cleanly instead of crashing.
+                stopSession();
+            }
         }
     }
 
@@ -269,6 +289,7 @@ public class BackgroundSessionService extends android.app.Service {
         if (hasFocus || audioManager == null) {
             return;
         }
+        abandonAudioFocus(); // never leave a stale request registered
         int result;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AudioAttributes attributes = new AudioAttributes.Builder()
