@@ -53,7 +53,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     }
 
     @Override
-    public void onAction(SessionAction action, SessionSource source) {
+    public void onAction(SessionAction action, SessionSource source, FocusLoss focusLoss) {
         if (action == SessionAction.STOP) {
             restoreWebViewPriority();
         }
@@ -61,6 +61,11 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
         event.put("action", action.wireName());
         if (source != null) {
             event.put("source", source.wireName());
+        }
+        if (focusLoss != null) {
+            event.put("focusChange", focusLoss.focusChange);
+            event.put("transient", focusLoss.isTransient());
+            event.put("call", focusLoss.call);
         }
         notifyListeners("action", event);
     }
@@ -111,7 +116,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
             // The system killed the service while we were in the background: the session is gone.
             // Tell JS (the STOP event also restores the renderer priority) and reject.
             SessionRegistry.end();
-            onAction(SessionAction.STOP, null);
+            onAction(SessionAction.STOP, null, null);
             call.reject("Could not update the background session: " + e.getMessage());
             return;
         }

@@ -5,7 +5,7 @@ final class SessionEvents {
 
     interface Listener {
         /** @param source where the action came from; null for system-initiated stops (give-up, task removed). */
-        void onAction(SessionAction action, SessionSource source);
+        void onAction(SessionAction action, SessionSource source, FocusLoss focusLoss);
     }
 
     private static volatile Listener listener;
@@ -24,9 +24,14 @@ final class SessionEvents {
     }
 
     static void dispatch(SessionAction action, SessionSource source) {
+        dispatch(action, source, null);
+    }
+
+    /** @param focusLoss what was lost, for an audio-focus action; null otherwise. */
+    static void dispatch(SessionAction action, SessionSource source, FocusLoss focusLoss) {
         Listener current = listener;
         if (current != null) {
-            current.onAction(action, source);
+            current.onAction(action, source, focusLoss);
         }
     }
 }

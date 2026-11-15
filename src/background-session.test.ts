@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBackgroundSession, type BackgroundSessionPlugin } from './background-session';
 
 function fakePlugin() {
-  const listeners: Array<(event: { action: 'pause' | 'resume' | 'skip' | 'stop'; source?: 'notification' | 'audio-focus' }) => void> = [];
+  const listeners: Array<(event: { action: 'pause' | 'resume' | 'skip' | 'stop'; source?: 'notification' | 'audio-focus'; focusChange?: number; transient?: boolean; call?: boolean }) => void> = [];
   const appStateListeners: Array<(event: { background: boolean }) => void> = [];
   const remove = vi.fn(async () => {});
   const plugin = {
@@ -114,8 +114,10 @@ describe('createBackgroundSession', () => {
     const unsubscribe = await session.onAction(handler);
     listeners[0]({ action: 'skip' });
     listeners[0]({ action: 'pause', source: 'audio-focus' });
-    expect(handler).toHaveBeenNthCalledWith(1, 'skip', undefined);
-    expect(handler).toHaveBeenNthCalledWith(2, 'pause', 'audio-focus');
+    listeners[0]({ action: 'pause', source: 'audio-focus', focusChange: -2, transient: true, call: false });
+    expect(handler).toHaveBeenNthCalledWith(1, 'skip', undefined, undefined);
+    expect(handler).toHaveBeenNthCalledWith(2, 'pause', 'audio-focus', undefined);
+    expect(handler).toHaveBeenNthCalledWith(3, 'pause', 'audio-focus', { focusChange: -2, transient: true, call: false });
     unsubscribe();
     expect(remove).toHaveBeenCalledOnce();
   });

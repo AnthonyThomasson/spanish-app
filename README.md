@@ -33,7 +33,7 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 - Select any combination of chapters, Spanish-to-English, English-to-Spanish, or Both (each card’s direction is picked at random, so the two are mixed), and shuffled or book order.
 - **Flip cards:** tap or click a card to reveal its answer.
 - **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
-- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. A wrong answer reveals and speaks the answer, then moves on to the next card (one try per card).
+- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. The answer is spoken at the end of every card: after “Correct” on a right answer, and instead of a retry on a wrong one (one try per card), then it moves on. A blank result counts as silence and listens again.
 
 ### Hiding mastered words
 
@@ -109,7 +109,7 @@ The notification has the same controls as the screen:
 - **Skip** moves to the next card. Like the on-screen Skip, skipping while paused resumes playback on the next card.
 - **Stop** ends the session and returns to deck setup.
 
-The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. The app’s own speech (text-to-speech and the speech recognizer) takes audio focus too; those changes, including ones that arrive just after the speech ends, never pause the session.
+The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. In Speak answers, the app’s own speech (text-to-speech and the speech recognizer) briefly takes audio focus too; a temporary focus loss while it plays, or within 2 seconds after it ends, does not pause the session. A permanent focus loss, a phone call (ringing, in a call, or a VoIP call) and Auto listen always pause as above. Each pause decision is logged to the WebView console with a `[session]` prefix (inspect it from `chrome://inspect`).
 
 Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background. Auto listen never claims the microphone: its service only plays audio.
 

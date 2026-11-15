@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import type { NotificationState } from './notification';
-import type { BackgroundAction, BackgroundActionSource } from './session-actions';
+import type { BackgroundAction, BackgroundActionSource, FocusLossInfo } from './session-actions';
 import { usingNativeSpeech } from './speech';
 
 /** Native contract implemented by the Android BackgroundSession plugin. */
@@ -12,7 +12,7 @@ export interface BackgroundSessionPlugin {
   getState?(): Promise<{ background: boolean }>;
   addListener(
     eventName: 'action',
-    listener: (event: { action: BackgroundAction; source?: BackgroundActionSource }) => void,
+    listener: (event: { action: BackgroundAction; source?: BackgroundActionSource } & FocusLossInfo) => void,
   ): Promise<{ remove(): Promise<void> }>;
   addListener(
     eventName: 'appState',
@@ -24,7 +24,7 @@ export interface BackgroundSession {
   /** Starts the foreground service on the first call, then keeps the notification up to date. */
   sync(state: NotificationState): void;
   stop(): void;
-  onAction(handler: (action: BackgroundAction, source?: BackgroundActionSource) => void): Promise<() => void>;
+  onAction(handler: (action: BackgroundAction, source?: BackgroundActionSource, focus?: FocusLossInfo) => void): Promise<() => void>;
   /**
    * Whether the app is in the background. On Android this is the activity state reported by the plugin,
    * because the plugin keeps the WebView looking visible and `document.hidden` can't be trusted; elsewhere
@@ -78,7 +78,12 @@ export function createBackgroundSession(
     async onAction(handler) {
       if (!enabled) return () => {};
       try {
-        const handle = await plugin.addListener('action', (event) => handler(event.action, event.source));
+        const handle = await plugin.addListener('action', (event) => {
+          const focus = event.focusChange === undefined && event.transient === undefined && event.call === undefined
+            ? undefined
+            : { focusChange: event.focusChange, transient: event.transient, call: event.call };
+          handler(event.action, event.source, focus);
+        });
         return () => { void handle.remove().catch(() => {}); };
       } catch {
         return () => {};

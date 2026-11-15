@@ -1,7 +1,7 @@
 import './style.css';
 import { backgroundSession } from './background-session';
 import { allHiddenMessage, formatChapterCount, formatSelectionSummary, pluralize } from './format';
-import { isCorrectAnswer } from './matching';
+import { hasSpokenText, isCorrectAnswer } from './matching';
 import { buildNotification } from './notification';
 import { ensureMicrophonePermission } from './microphone';
 import { ownAudio } from './own-audio';
@@ -491,29 +491,36 @@ function startListening(card: Card, token: number): void {
   let retryDelay = recognitionRetryDelay('no-speech');
   setStatus('Listening… say your answer.', 'listening');
 
+  // Silence and errors: keep waiting, retry, or pause for a real blocker.
+  const handleRecognitionError = (error: string) => {
+    // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
+    if (error === 'aborted' || token !== runId || !active || paused) return;
+    const verdict = recognitionMonitor.handle(error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
+    retryDelay = recognitionMonitor.retryDelay(error);
+    if (verdict === 'pause') {
+      handled = true;
+      pauseAfterRecognitionFailure(error);
+    } else if (verdict === 'retry') {
+      setStatus('Recognition had trouble. I’ll try listening again.');
+    }
+  };
   current.onresult = (event) => {
-    handled = true;
     const transcripts: string[] = [];
     for (let i = 0; i < event.results.length; i++) {
       for (let j = 0; j < event.results[i].length; j++) transcripts.push(event.results[i][j].transcript);
     }
+    // A blank result is silence, not a wrong answer: listen again instead of revealing or recording a miss.
+    if (!hasSpokenText(transcripts)) {
+      handleRecognitionError('no-speech');
+      return;
+    }
+    handled = true;
     recognitionMonitor.reset();
     const correct = transcripts.some((transcript) => isCorrectAnswer(transcript, answerFor(card)));
     element('heard-text').textContent = transcripts[0] ? `I heard: “${transcripts[0]}”` : '';
     void handleSpokenAnswer(correct, card, token);
   };
-  current.onerror = (event) => {
-    // An aborted recognizer (Pause, Skip, Stop) can still report late; it must not touch the current card.
-    if (event.error === 'aborted' || token !== runId || !active || paused) return;
-    const verdict = recognitionMonitor.handle(event.error, { native: usingNativeSpeech(), hidden: backgroundSession.isBackground() });
-    retryDelay = recognitionMonitor.retryDelay(event.error);
-    if (verdict === 'pause') {
-      handled = true;
-      pauseAfterRecognitionFailure(event.error);
-    } else if (verdict === 'retry') {
-      setStatus('Recognition had trouble. I’ll try listening again.');
-    }
-  };
+  current.onerror = (event) => handleRecognitionError(event.error);
   current.onend = () => {
     if (recognition === current) recognition = null; // no longer listening
     ownAudio.touch(); // the recognizer's audio-focus change can arrive after it closes
@@ -532,6 +539,7 @@ function startListening(card: Card, token: number): void {
 function pauseAfterRecognitionFailure(error: string): void {
   runId += 1; // invalidate any pending listen retry so Resume starts from a clean slate
   paused = true;
+  console.info(`[session] pause after recognition failure error=${error}`);
   element('pause-button').textContent = 'Resume';
   const background = backgroundSession.isBackground();
   setStatus(recognitionFailureMessage(error, background, usingNativeSpeech()));
@@ -549,6 +557,8 @@ async function handleSpokenAnswer(correct: boolean, card: Card, token: number): 
     revealAnswer();
     setStatus('Correct. Nice work.', 'correct');
     await speaker.speak('Correct', 'en');
+    if (token !== runId) return;
+    await speaker.speak(answerFor(card), answerLanguage(card));
     if (await wait(900, token)) {
       currentIndex += 1;
       showCard();
@@ -673,21 +683,25 @@ element('new-deck').addEventListener('click', returnToSetup);
 element('restart-deck').addEventListener('click', () => { void startDeck(); });
 document.addEventListener('visibilitychange', () => {
   const hiddenState = { hidden: document.hidden, active, mode: settings.mode, paused, native: usingNativeSpeech() };
-  if (shouldAutoPauseWhenHidden(hiddenState)) togglePause();
+  if (shouldAutoPauseWhenHidden(hiddenState)) {
+    console.info('[session] pause because the tab was hidden (browser only)');
+    togglePause();
+  }
 });
 
 updateMasterySettings();
 // Notification buttons drive the same code paths as the on-screen controls.
-void backgroundSession.onAction((action, source) => dispatchBackgroundAction(action, {
+void backgroundSession.onAction((action, source, focus) => dispatchBackgroundAction(action, {
   isActive: () => active && settings.mode !== 'flip',
   isPaused: () => paused,
   isListening: () => recognition !== null,
-  isOwnAudio: () => ownAudio.isActive(),
+  // Own-audio focus changes are only ignored in Speak answers; Auto listen pauses on any real focus loss.
+  isOwnAudio: () => settings.mode === 'answer' && ownAudio.isActive(),
   pause: togglePause,
   resume: togglePause,
   skip: nextCard,
   stop: returnToSetup,
-}, source));
+}, source, focus));
 void backgroundSession.watchAppState();
 // Clear any notification left behind by a previous page load.
 backgroundSession.stop();

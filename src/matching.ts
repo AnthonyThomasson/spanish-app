@@ -31,3 +31,8 @@ export function isCorrectAnswer(spoken: string, expected: string): boolean {
   if (!actual) return false;
   return answerAlternatives(expected).some((alternative) => alternative === actual);
 }
+
+/** Whether recognition returned anything to judge: blank or whitespace-only results are silence, not a wrong answer. */
+export function hasSpokenText(transcripts: string[]): boolean {
+  return transcripts.some((transcript) => transcript.trim() !== '');
+}

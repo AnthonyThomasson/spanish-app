@@ -322,7 +322,8 @@ public class BackgroundSessionService extends android.app.Service {
         SessionAction action = AudioFocusPolicy.actionFor(focusChange);
         if (action != null) {
             hasFocus = false;
-            SessionEvents.dispatch(action, SessionSource.AUDIO_FOCUS);
+            boolean call = audioManager != null && AudioFocusPolicy.isCallMode(audioManager.getMode());
+            SessionEvents.dispatch(action, SessionSource.AUDIO_FOCUS, new FocusLoss(focusChange, call));
         }
     };
 

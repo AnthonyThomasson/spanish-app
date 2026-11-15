@@ -20,4 +20,16 @@ final class AudioFocusPolicy {
                 return null;
         }
     }
+
+    /** A transient loss (as opposed to a permanent {@code AUDIOFOCUS_LOSS}): the kind our own speech and recognizer cause. */
+    static boolean isTransientLoss(int focusChange) {
+        return focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
+    }
+
+    /** Whether the audio mode says a call is ringing or in progress (including VoIP). */
+    static boolean isCallMode(int audioMode) {
+        return audioMode == AudioManager.MODE_RINGTONE
+            || audioMode == AudioManager.MODE_IN_CALL
+            || audioMode == AudioManager.MODE_IN_COMMUNICATION;
+    }
 }
