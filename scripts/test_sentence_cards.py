@@ -174,6 +174,23 @@ class SentenceImageTests(unittest.TestCase):
         cards, _ = parse(two_columns([("Pintalo.", "Paint it for me."), ("Saltemos.", "Let's jump.")]))
         self.assertEqual(len(cards), 2)
 
+    def test_statements_ending_in_a_dangling_word_are_dropped(self):
+        for spanish, english in [
+            ("Zorba dice que le gusta pintar.", "Zorba says he likes to."),
+            ("El loro viene de la cueva.", "The parrot is coming from."),
+            ("Vivo en Lima por tres años.", "I have lived in Lima for."),
+        ]:
+            cards, _ = parse(two_columns([(spanish, english)]))
+            self.assertEqual(cards, [], english)
+
+    def test_questions_ending_in_a_preposition_are_kept(self):
+        cards, _ = parse(two_columns([("¿De dónde viene el loro?", "Where is the parrot from?")]))
+        self.assertEqual(len(cards), 1)
+
+    def test_unclosed_statements_get_a_full_stop_on_both_sides(self):
+        cards, _ = parse(two_columns([("Zorba pinta la cerca verde", "Zorba paints the green fence")]))
+        self.assertEqual((cards[0].spanish, cards[0].english), ("Zorba pinta la cerca verde.", "Zorba paints the green fence."))
+
     def test_garbled_english_is_dropped(self):
         cards, _ = parse(two_columns([("¿Dónde duerme el loro?", "Where does the parrot sleep'?")]))
         self.assertEqual(cards, [])

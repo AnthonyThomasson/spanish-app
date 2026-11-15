@@ -88,7 +88,7 @@ class VosotrosTests(unittest.TestCase):
 
     def test_commands_and_possessives(self):
         self.assertEqual(run("Cantad.", "Sing.").spanish, "Canten.")
-        self.assertEqual(run("No bailéis aquí.", "Don't dance here.").spanish, "No bailen aquí.")
+        self.assertEqual(run("No cantéis aquí.", "Don't sing here.").spanish, "No canten aquí.")
         self.assertEqual(run("Vuestro loro es verde.", "Your parrot is green.").spanish, "Su loro es verde.")
 
     def test_uncertain_vosotros_is_dropped(self):
@@ -137,7 +137,7 @@ class VosotrosLeakTests(unittest.TestCase):
 
 class TuLeakTests(unittest.TestCase):
     def test_dont_you_and_do_you_trigger_conversion(self):
-        self.assertEqual(run("¿Por qué no vienes acá?", "Why don't you come here?").spanish, "¿Por qué no venís acá?")
+        self.assertEqual(run("¿Por qué no pintas tú la cerca?", "Why don't you paint the fence?").spanish, "¿Por qué no pintás vos la cerca?")
         self.assertEqual(run("¿Duermes en la cueva?", "Do you sleep in the cave?").spanish, "¿Dormís en la cueva?")
 
     def test_ti_after_a_preposition_is_converted(self):
@@ -149,7 +149,7 @@ class TuLeakTests(unittest.TestCase):
         self.assertEqual(run("¿Cómo te sientes?", "How are you feeling?").status, "dropped")
 
     def test_negative_commands_with_te_are_kept(self):
-        for spanish, english in [("No te vayas.", "Don't leave."), ("No te quejes del frío.", "Don't complain about the cold.")]:
+        for spanish, english in [("No te vayas.", "Don't leave."), ("No te rías del loro.", "Don't laugh at the parrot.")]:
             self.assertNotEqual(run(spanish, english).status, "dropped", spanish)
 
     def test_ocr_slipped_imperative_is_dropped(self):

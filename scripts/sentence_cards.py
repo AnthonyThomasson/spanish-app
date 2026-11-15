@@ -151,6 +151,16 @@ def fix_doubled_punctuation(text: str) -> str:
     return re.sub(r"\.,", ".", text)
 
 
+# A statement that ends on one of these lost its last word ("She likes to.", "He lives in London for.").
+DANGLING_ENGLISH_END = re.compile(
+    r"\b(?:to|for|from|of|the|a|an|and|or|that|in|with|at|if|when|my|your|our|their)\.$", re.IGNORECASE
+)
+QUESTION_START = re.compile(
+    r"^(?:who|whom|whose|what|where|when|why|how|which|do|does|did|is|are|was|were|can|could|will|would|have|has|"
+    r"should|shall|may)\b", re.IGNORECASE
+)
+
+
 def has_terminal(text: str) -> bool:
     return bool(re.search(r"[.?!][\"”')]*$", text))
 
@@ -168,6 +178,8 @@ def sentence_problem(spanish: str, english: str) -> str | None:
         return "noise"
     if LABEL.search(spanish) or LABEL.search(english):
         return "label"
+    if DANGLING_ENGLISH_END.search(english):
+        return "dangling"
     if GARBLED_ENGLISH.search(english) or re.search(r"[.,]{2}(?!\.)|\.,", spanish + english):
         return "garbled"
     if re.search(r"\(\s*[mf]\.?\s*\)|\((?:sing|pl)\.?\)", spanish + english, re.IGNORECASE):
@@ -226,6 +238,12 @@ def parse_image(image: dict, report: Counter) -> list[Card]:
         # When only the English closed the sentence, close the Spanish the same way.
         if not has_terminal(spanish) and has_terminal(english):
             spanish = fix_spanish(spanish + english[-1])
+        # Neither side closed, and the pair is not a question: it is a statement, so close both.
+        if (
+            not has_terminal(spanish) and not has_terminal(english)
+            and not spanish.startswith(("¿", "¡")) and not QUESTION_START.match(english)
+        ):
+            spanish, english = spanish + ".", english + "."
         problem = sentence_problem(spanish, english)
         if problem:
             report[f"sentences.rejected.{problem}"] += 1
