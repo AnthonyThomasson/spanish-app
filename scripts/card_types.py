@@ -18,6 +18,14 @@ KINDS = (WORD, SENTENCE, CONJUGATION)
 
 
 @dataclass(frozen=True)
+class ConjugationSource:
+    """What a conjugation card needs to get its English once every word card is known."""
+    infinitive: str  # as the table header gives it, e.g. "sentarse"
+    pronoun: str  # yo, vos, él, ella, Ud., nosotros, ellos, ellas or Uds.
+    gloss: str = ""  # the table header's English ("to sit down"); empty = recover it from the word cards
+
+
+@dataclass(frozen=True)
 class Card:
     spanish: str
     english: str
@@ -25,3 +33,6 @@ class Card:
     # Set when the card's Spanish side was written for tú/vosotros and still has to be
     # converted (or dropped) once the verb lexicon exists.
     needs_second_person_pass: bool = False
+    tense: str = ""  # conjugation cards only, e.g. "present"
+    # Set on a conjugation card whose English is still to be generated (english is empty until then).
+    conjugation: ConjugationSource | None = None

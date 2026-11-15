@@ -66,6 +66,7 @@ ENGLISH_OCR_CORRECTIONS = {
     "basehall": "baseball",
     "marketp": "marketplace",
     "didt": "didn't",
+    "oneselt": "oneself",
 }
 SPANISH_OCR_CORRECTIONS = {
     "desparecerse": "desaparecerse",

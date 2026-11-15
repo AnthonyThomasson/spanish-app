@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 
 from card_types import WORD, Card
+from conjugation_cards import gloss_index, resolve_all
 
 from ocr_layout import (  # noqa: F401  (re-exported for callers of the old module layout)
     CONJUGATION_MARKERS,
@@ -181,7 +182,10 @@ def card_entry(card: Card, source_page: int) -> dict:
     progress keys survive; other kinds carry an explicit `kind`."""
     if card.kind == WORD:
         return word_details(card.spanish, card.english, source_page)
-    return {"spanish": card.spanish, "english": card.english, "sourcePage": source_page, "kind": card.kind}
+    entry = {"spanish": card.spanish, "english": card.english, "sourcePage": source_page, "kind": card.kind}
+    if card.tense:
+        entry["tense"] = card.tense
+    return entry
 
 
 def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_titles: list[str]) -> tuple[dict, dict]:
@@ -206,8 +210,9 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
         if not chapter_number:
             continue
         cards = [Card(spanish, english) for spanish, english in parse_image(image)]
+        located = {**image, "chapter": chapter_number}  # parsers may be chapter-specific (present-tense tables)
         for parser in PARSERS:
-            cards.extend(parser(image, report))
+            cards.extend(parser(located, report))
         if not cards:
             stats["rejectedImages"] += 1
             stats["rejectedPages"][str(page)] = stats["rejectedPages"].get(str(page), 0) + 1
@@ -218,6 +223,8 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
     # Pass 2: tú/vosotros sentences become vos/ustedes (or are dropped), then the Argentine word map.
     lexicon = Lexicon.from_word_cards(card for _, _, card in entries)
     indexes = {"present": lexicon.tu_present_index(), "imperative": lexicon.tu_imperative_index()}
+    # Conjugation cards get their English now that every infinitive's word card is known.
+    entries = resolve_all(entries, gloss_index(card for _, _, card in entries), report)
     seen = set()
     # Chapters that already list a plain "se" card (himself, themselves, yourselves...).
     chapters_with_se = {
@@ -253,7 +260,9 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
             report[f"duplicates.{card.kind}"] += 1
             continue
         seen.add(key)
-        chapters[chapter_number - 1]["words"].append(card_entry(Card(mapped, card.english, card.kind), page))
+        chapters[chapter_number - 1]["words"].append(
+            card_entry(Card(mapped, card.english, card.kind, tense=card.tense), page)
+        )
 
     stats["cards"] = dict(Counter(word.get("kind", WORD) for chapter in chapters for word in chapter["words"]))
     stats["cardsByChapter"] = {

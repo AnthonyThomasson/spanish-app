@@ -1,6 +1,7 @@
 """Registry of per-image card parsers, run in this order for every image."""
 
 import command_cards
+import conjugation_cards
 import extra_vocab
 import sentence_cards
 
@@ -9,5 +10,6 @@ import sentence_cards
 PARSERS = [
     sentence_cards.parse_image,
     command_cards.parse_image,
+    conjugation_cards.parse_image,
     extra_vocab.parse_image,
 ]
