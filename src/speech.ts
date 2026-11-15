@@ -112,6 +112,7 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
   }
 
   private fail(error: string): void {
+    if (this.aborted) return;
     this.onerror?.({ error } as SpeechRecognitionErrorEventLike);
   }
 

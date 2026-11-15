@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RecognitionFailureTracker, classifyNativeRecognitionError, recognitionFailureMessage } from './recognition-errors';
+import { RecognitionFailureTracker, RecognitionMonitor, classifyNativeRecognitionError, recognitionFailureMessage } from './recognition-errors';
 
 describe('classifyNativeRecognitionError', () => {
   it('maps permission problems to not-allowed', () => {
@@ -50,5 +50,59 @@ describe('recognitionFailureMessage', () => {
 
   it('gives a retry message for repeated start failures in the foreground', () => {
     expect(recognitionFailureMessage('audio-capture', false)).toMatch(/Resume/);
+  });
+});
+
+describe('RecognitionMonitor', () => {
+  const foreground = { native: true, hidden: false };
+  const background = { native: true, hidden: true };
+
+  it('pauses immediately when the microphone is blocked', () => {
+    const monitor = new RecognitionMonitor();
+    expect(monitor.handle('not-allowed', foreground)).toBe('pause');
+    expect(monitor.handle('service-not-allowed', foreground)).toBe('pause');
+  });
+
+  it('retries silence in the foreground forever', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 20; i++) expect(monitor.handle('no-speech', foreground)).toBe('silence');
+  });
+
+  it('pauses after repeated silence while hidden on native', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 4; i++) expect(monitor.handle('no-speech', background)).toBe('silence');
+    expect(monitor.handle('no-speech', background)).toBe('pause');
+  });
+
+  it('does not cap silence in a browser', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 10; i++) expect(monitor.handle('no-speech', { native: false, hidden: true })).toBe('silence');
+  });
+
+  it('restarts the silence count after a result or when the page is visible again', () => {
+    const monitor = new RecognitionMonitor();
+    for (let i = 0; i < 4; i++) monitor.handle('no-speech', background);
+    monitor.reset();
+    expect(monitor.handle('no-speech', background)).toBe('silence');
+    for (let i = 0; i < 3; i++) monitor.handle('no-speech', background);
+    monitor.handle('no-speech', foreground);
+    for (let i = 0; i < 4; i++) expect(monitor.handle('no-speech', background)).toBe('silence');
+  });
+
+  it('pauses after three consecutive start failures on native only', () => {
+    const monitor = new RecognitionMonitor();
+    expect(monitor.handle('audio-capture', foreground)).toBe('retry');
+    expect(monitor.handle('audio-capture', foreground)).toBe('retry');
+    expect(monitor.handle('audio-capture', foreground)).toBe('pause');
+    const browser = new RecognitionMonitor();
+    for (let i = 0; i < 10; i++) expect(browser.handle('network', { native: false, hidden: false })).toBe('retry');
+  });
+
+  it('counts a silent attempt as proof the microphone works', () => {
+    const monitor = new RecognitionMonitor();
+    monitor.handle('audio-capture', foreground);
+    monitor.handle('audio-capture', foreground);
+    monitor.handle('no-speech', foreground);
+    expect(monitor.handle('audio-capture', foreground)).toBe('retry');
   });
 });

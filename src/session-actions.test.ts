@@ -5,6 +5,7 @@ function controls(overrides: Partial<SessionControls> = {}): SessionControls {
   return {
     isActive: () => true,
     isPaused: () => false,
+    isListening: () => false,
     pause: vi.fn(),
     resume: vi.fn(),
     skip: vi.fn(),
@@ -50,5 +51,21 @@ describe('dispatchBackgroundAction', () => {
     expect(c.resume).not.toHaveBeenCalled();
     expect(c.skip).not.toHaveBeenCalled();
     expect(c.stop).not.toHaveBeenCalled();
+  });
+
+  it('ignores an audio-focus pause while our own recognizer is listening', () => {
+    const c = controls({ isListening: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus');
+    expect(c.pause).not.toHaveBeenCalled();
+  });
+
+  it('honours an audio-focus pause when not listening, and notification pauses always', () => {
+    const idle = controls();
+    dispatchBackgroundAction('pause', idle, 'audio-focus');
+    expect(idle.pause).toHaveBeenCalledOnce();
+    const listening = controls({ isListening: () => true });
+    dispatchBackgroundAction('pause', listening, 'notification');
+    dispatchBackgroundAction('pause', listening);
+    expect(listening.pause).toHaveBeenCalledTimes(2);
   });
 });

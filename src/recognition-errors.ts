@@ -23,6 +23,34 @@ export class RecognitionFailureTracker {
   }
 }
 
+export type RecognitionVerdict = 'pause' | 'silence' | 'retry';
+
+/**
+ * Decides what a recognition error means for a Speak answers session: keep waiting through silence,
+ * retry after a transient failure, or give up and pause. Only native Android pauses on repeated trouble.
+ */
+export class RecognitionMonitor {
+  private readonly failures = new RecognitionFailureTracker(3);
+  private readonly silences = new RecognitionFailureTracker(5);
+
+  handle(error: string, context: { native: boolean; hidden: boolean }): RecognitionVerdict {
+    if (error === 'not-allowed' || error === 'service-not-allowed') return 'pause';
+    if (error === 'no-speech') {
+      this.failures.reset();
+      // In the background Android may block the microphone in a way that only looks like silence.
+      if (context.native && context.hidden) return this.silences.record() ? 'pause' : 'silence';
+      this.silences.reset();
+      return 'silence';
+    }
+    return context.native && this.failures.record() ? 'pause' : 'retry';
+  }
+
+  reset(): void {
+    this.failures.reset();
+    this.silences.reset();
+  }
+}
+
 export function recognitionFailureMessage(error: string, hidden: boolean): string {
   const blocked = error === 'not-allowed' || error === 'service-not-allowed';
   if (hidden) {

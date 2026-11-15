@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBackgroundSession, type BackgroundSessionPlugin } from './background-session';
 
 function fakePlugin() {
-  const listeners: Array<(event: { action: 'pause' | 'resume' | 'skip' | 'stop' }) => void> = [];
+  const listeners: Array<(event: { action: 'pause' | 'resume' | 'skip' | 'stop'; source?: 'notification' | 'audio-focus' }) => void> = [];
   const remove = vi.fn(async () => {});
   const plugin = {
     start: vi.fn(async () => {}),
@@ -89,13 +89,29 @@ describe('createBackgroundSession', () => {
     expect(plugin.update).not.toHaveBeenCalled();
   });
 
+  it('does not let an old failed start clobber a newer start', async () => {
+    const { plugin } = fakePlugin();
+    plugin.start.mockImplementationOnce(async () => { await new Promise((r) => setTimeout(r, 10)); throw new Error('late'); });
+    const session = createBackgroundSession(plugin, true);
+    session.sync(state); // start A (will fail late)
+    session.stop();
+    session.sync(state); // start B
+    await session.idle();
+    session.sync(state); // should be an update: B is running
+    await session.idle();
+    expect(plugin.start).toHaveBeenCalledTimes(2);
+    expect(plugin.update).toHaveBeenCalledOnce();
+  });
+
   it('forwards notification actions and can unsubscribe', async () => {
     const { plugin, listeners, remove } = fakePlugin();
     const session = createBackgroundSession(plugin, true);
     const handler = vi.fn();
     const unsubscribe = await session.onAction(handler);
     listeners[0]({ action: 'skip' });
-    expect(handler).toHaveBeenCalledWith('skip');
+    listeners[0]({ action: 'pause', source: 'audio-focus' });
+    expect(handler).toHaveBeenNthCalledWith(1, 'skip', undefined);
+    expect(handler).toHaveBeenNthCalledWith(2, 'pause', 'audio-focus');
     unsubscribe();
     expect(remove).toHaveBeenCalledOnce();
   });
