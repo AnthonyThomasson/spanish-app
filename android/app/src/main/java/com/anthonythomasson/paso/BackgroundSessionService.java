@@ -31,48 +31,33 @@ public class BackgroundSessionService extends android.app.Service {
     private static final String EXTRA_TITLE = "title";
     private static final String EXTRA_TEXT = "text";
     private static final String EXTRA_PAUSED = "paused";
-    private static final String EXTRA_MODE = "mode";
     private static final String WAKE_LOCK_TAG = "paso:session";
     /** Safety net so a leaked lock cannot drain the battery forever; refreshed on every update. */
     private static final long WAKE_LOCK_TIMEOUT_MS = 6L * 60 * 60 * 1000;
 
-    /**
-     * True from the moment the plugin asks for a session until it stops it (or the service stops
-     * itself). Deliberately not cleared in onDestroy(): a late onDestroy() of an old instance must not
-     * clobber a session that was started right after stop().
-     */
-    private static volatile boolean active;
-
-    private SessionState state = new SessionState(null, null, false, null);
+    private SessionState state = new SessionState(null, null, false);
+    /** The session this instance belongs to; only that session may be ended by this instance. */
+    private int generation;
     private PowerManager.WakeLock wakeLock;
     private AudioManager audioManager;
     private AudioFocusRequest focusRequest;
     private boolean hasFocus;
 
     static boolean isActive() {
-        return active;
-    }
-
-    static void markActive() {
-        active = true;
-    }
-
-    static void markInactive() {
-        active = false;
+        return SessionRegistry.isActive();
     }
 
     /** Starts the service (or refreshes the running one) with the given notification state. */
     static void start(Context context, SessionState state) {
-        markActive();
+        SessionRegistry.begin();
         ContextCompat.startForegroundService(context, configureIntent(context, state));
     }
 
     /** Refreshes the notification of the running service. No-op when no session is active. */
     static void update(Context context, String title, String text, boolean paused) {
-        if (!active) {
+        if (!SessionRegistry.isActive()) {
             return;
         }
-        // No mode extra: the service keeps the mode it was started with.
         context.startService(
             new Intent(context, BackgroundSessionService.class)
                 .setAction(ACTION_CONFIGURE)
@@ -83,7 +68,7 @@ public class BackgroundSessionService extends android.app.Service {
     }
 
     static void stop(Context context) {
-        markInactive();
+        SessionRegistry.end();
         context.stopService(new Intent(context, BackgroundSessionService.class));
     }
 
@@ -92,13 +77,13 @@ public class BackgroundSessionService extends android.app.Service {
             .setAction(ACTION_CONFIGURE)
             .putExtra(EXTRA_TITLE, state.title())
             .putExtra(EXTRA_TEXT, state.text())
-            .putExtra(EXTRA_PAUSED, state.paused())
-            .putExtra(EXTRA_MODE, state.mode());
+            .putExtra(EXTRA_PAUSED, state.paused());
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        generation = SessionRegistry.generation();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createChannel();
         acquireWakeLock();
@@ -111,9 +96,9 @@ public class BackgroundSessionService extends android.app.Service {
         if (intent == null) {
             return START_NOT_STICKY;
         }
-        if (!active) {
+        if (!SessionRegistry.isActive()) {
             // A stale notification button or a late update reached a service nobody asked for.
-            stopSession();
+            endSession();
             return START_NOT_STICKY;
         }
         SessionAction action = SessionAction.fromIntentAction(intent.getAction());
@@ -121,35 +106,34 @@ public class BackgroundSessionService extends android.app.Service {
             handleNotificationAction(action);
             return START_NOT_STICKY;
         }
-        String mode = intent.getStringExtra(EXTRA_MODE);
         state = new SessionState(
             intent.getStringExtra(EXTRA_TITLE),
             intent.getStringExtra(EXTRA_TEXT),
-            intent.getBooleanExtra(EXTRA_PAUSED, false),
-            mode != null ? mode : state.mode()
+            intent.getBooleanExtra(EXTRA_PAUSED, false)
         );
-        acquireWakeLock();
-        if (!state.paused()) {
+        if (state.needsWakeLock()) {
+            acquireWakeLock();
             // Focus is kept while paused; it is only re-requested when the user resumes.
             requestAudioFocus();
+        } else {
+            releaseWakeLock();
         }
         promoteToForeground();
         return START_NOT_STICKY;
     }
 
     private void handleNotificationAction(SessionAction action) {
-        SessionEvents.dispatch(action);
+        SessionEvents.dispatch(action, SessionSource.NOTIFICATION);
         if (action == SessionAction.STOP) {
             // Stop must work even when the WebView is gone and nobody listens.
-            stopSession();
+            endSession();
         }
     }
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         // The activity (and its WebView, which runs the session) was swiped away: nothing left to drive.
-        SessionEvents.dispatch(SessionAction.STOP);
-        stopSession();
+        giveUp();
         super.onTaskRemoved(rootIntent);
     }
 
@@ -165,31 +149,44 @@ public class BackgroundSessionService extends android.app.Service {
         return null;
     }
 
-    private void stopSession() {
-        active = false;
+    /**
+     * Ends the session because it can no longer run (foreground start refused, task removed): tells JS
+     * so it does not keep believing a session is alive, then tears the service down.
+     */
+    private void giveUp() {
+        SessionEvents.dispatch(SessionAction.STOP, null);
+        endSession();
+    }
+
+    /** Tears the service down; clears the shared flag only if this instance still owns the session. */
+    private void endSession() {
+        SessionRegistry.endIfCurrent(generation);
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
 
-    private void promoteToForeground() {
+    /** @return false if the system refused and the session was given up. */
+    private boolean promoteToForeground() {
         Notification notification = buildNotification();
         boolean micGranted =
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         int types = ForegroundTypes.resolve(Build.VERSION.SDK_INT, micGranted);
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types);
+            return true;
         } catch (RuntimeException e) {
-            // Microphone type can be refused (e.g. started from the background): fall back to media only.
+            // Microphone type can be refused (e.g. started from the background): retry with media only.
             int mediaOnly = ForegroundTypes.resolve(Build.VERSION.SDK_INT, false);
-            if (mediaOnly == types) {
-                throw e;
+            if (mediaOnly != types) {
+                try {
+                    ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
+                    return true;
+                } catch (RuntimeException ignored) {
+                    // fall through to giving up
+                }
             }
-            try {
-                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, mediaOnly);
-            } catch (RuntimeException fallbackFailure) {
-                // E.g. the system refuses a foreground start: give up cleanly instead of crashing.
-                stopSession();
-            }
+            giveUp();
+            return false;
         }
     }
 
@@ -281,7 +278,7 @@ public class BackgroundSessionService extends android.app.Service {
         SessionAction action = AudioFocusPolicy.actionFor(focusChange);
         if (action != null) {
             hasFocus = false;
-            SessionEvents.dispatch(action);
+            SessionEvents.dispatch(action, SessionSource.AUDIO_FOCUS);
         }
     };
 

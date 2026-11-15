@@ -4,18 +4,15 @@ package com.anthonythomasson.paso;
 public final class SessionState {
 
     public static final String DEFAULT_TITLE = "Paso";
-    public static final String DEFAULT_MODE = "auto";
 
     private final String title;
     private final String text;
     private final boolean paused;
-    private final String mode;
 
-    public SessionState(String title, String text, boolean paused, String mode) {
+    public SessionState(String title, String text, boolean paused) {
         this.title = isBlank(title) ? DEFAULT_TITLE : title;
         this.text = isBlank(text) ? "" : text;
         this.paused = paused;
-        this.mode = isBlank(mode) ? DEFAULT_MODE : mode;
     }
 
     public String title() {
@@ -30,17 +27,14 @@ public final class SessionState {
         return paused;
     }
 
-    public String mode() {
-        return mode;
-    }
-
     /** The action the first button performs: Pause while running, Resume while paused. */
     public SessionAction toggleAction() {
         return paused ? SessionAction.RESUME : SessionAction.PAUSE;
     }
 
-    public SessionState updated(String newTitle, String newText, boolean newPaused) {
-        return new SessionState(newTitle, newText, newPaused, mode);
+    /** Nothing is running while paused, so the partial wake lock is only needed otherwise. */
+    public boolean needsWakeLock() {
+        return !paused;
     }
 
     private static boolean isBlank(String value) {

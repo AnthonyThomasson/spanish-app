@@ -52,12 +52,15 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     }
 
     @Override
-    public void onAction(SessionAction action) {
+    public void onAction(SessionAction action, SessionSource source) {
         if (action == SessionAction.STOP) {
             restoreWebViewPriority();
         }
         JSObject event = new JSObject();
         event.put("action", action.wireName());
+        if (source != null) {
+            event.put("source", source.wireName());
+        }
         notifyListeners("action", event);
     }
 
@@ -80,13 +83,12 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
         SessionState state = new SessionState(
             call.getString("title"),
             call.getString("text"),
-            Boolean.TRUE.equals(call.getBoolean("paused", false)),
-            call.getString("mode")
+            Boolean.TRUE.equals(call.getBoolean("paused", false))
         );
         try {
             BackgroundSessionService.start(getContext(), state);
         } catch (RuntimeException e) {
-            BackgroundSessionService.markInactive();
+            SessionRegistry.end();
             call.reject("Could not start the background session: " + e.getMessage());
             return;
         }
@@ -104,8 +106,16 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
                 Boolean.TRUE.equals(call.getBoolean("paused", false))
             );
         } catch (RuntimeException e) {
+            // The system killed the service while we were in the background: the session is gone.
+            // Tell JS (the STOP event also restores the renderer priority) and reject.
+            SessionRegistry.end();
+            onAction(SessionAction.STOP, null);
             call.reject("Could not update the background session: " + e.getMessage());
             return;
+        }
+        if (BackgroundSessionService.isActive()) {
+            // Cheap and idempotent; covers a screen-off or delayed hide after the post-onPause window.
+            mainHandler.post(this::applyKeepRunning);
         }
         call.resolve();
     }

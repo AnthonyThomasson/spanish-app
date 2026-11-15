@@ -4,7 +4,8 @@ package com.anthonythomasson.paso;
 final class SessionEvents {
 
     interface Listener {
-        void onAction(SessionAction action);
+        /** @param source where the action came from; null for system-initiated stops (give-up, task removed). */
+        void onAction(SessionAction action, SessionSource source);
     }
 
     private static volatile Listener listener;
@@ -22,10 +23,10 @@ final class SessionEvents {
         }
     }
 
-    static void dispatch(SessionAction action) {
+    static void dispatch(SessionAction action, SessionSource source) {
         Listener current = listener;
         if (current != null) {
-            current.onAction(action);
+            current.onAction(action, source);
         }
     }
 }

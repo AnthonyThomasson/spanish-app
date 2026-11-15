@@ -10,32 +10,26 @@ public class SessionStateTest {
 
     @Test
     public void pauseButtonShowsPauseWhileRunning() {
-        SessionState state = new SessionState("Auto listen", "hola", false, "auto");
+        SessionState state = new SessionState("Auto listen", "hola", false);
         assertEquals(SessionAction.PAUSE, state.toggleAction());
     }
 
     @Test
     public void pauseButtonBecomesResumeWhilePaused() {
-        SessionState state = new SessionState("Auto listen", "hola", true, "auto");
+        SessionState state = new SessionState("Auto listen", "hola", true);
         assertEquals(SessionAction.RESUME, state.toggleAction());
     }
 
     @Test
     public void blankTitleAndTextFallBackToDefaults() {
-        SessionState state = new SessionState(null, "  ", false, null);
+        SessionState state = new SessionState(null, "  ", false);
         assertEquals(SessionState.DEFAULT_TITLE, state.title());
         assertEquals("", state.text());
-        assertEquals("auto", state.mode());
     }
 
     @Test
-    public void withTextUpdatesTitleTextAndPausedButKeepsMode() {
-        SessionState state = new SessionState("A", "b", false, "answer");
-        SessionState next = state.updated("C", "d", true);
-        assertEquals("C", next.title());
-        assertEquals("d", next.text());
-        assertTrue(next.paused());
-        assertEquals("answer", next.mode());
-        assertFalse(state.paused());
+    public void wakeLockIsHeldOnlyWhileRunning() {
+        assertTrue(new SessionState("t", "x", false).needsWakeLock());
+        assertFalse(new SessionState("t", "x", true).needsWakeLock());
     }
 }
