@@ -77,7 +77,7 @@ app.innerHTML = `
           <label class="shuffle-toggle"><span><b>Shuffle deck</b><small>Mix up the card order</small></span><input id="shuffle" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
           <label class="shuffle-toggle"><span><b>Include hidden words</b><small>Review words you’ve already mastered</small></span><input id="include-hidden" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
           <p id="start-error" class="form-error" role="alert"></p>
-          <div id="all-hidden" class="hidden-notice" hidden>
+          <div id="all-hidden" class="hidden-notice" role="status" hidden>
             <p id="all-hidden-message"></p>
             <button id="include-and-start" class="secondary" type="button">Include hidden words and start</button>
           </div>
@@ -186,6 +186,9 @@ async function loadVocabulary(): Promise<void> {
 function renderChapters(): void {
   chapterCountLabels.clear();
   chapters.forEach((chapter, index) => {
+    // The row wrapper holds the selectable <label> and, outside it, the reset actions.
+    const item = document.createElement('div');
+    item.className = 'chapter-item';
     const label = document.createElement('label');
     label.className = 'chapter-option';
     const checkbox = document.createElement('input');
@@ -202,27 +205,24 @@ function renderChapters(): void {
     const count = document.createElement('span');
     count.className = 'chapter-count';
     chapterCountLabels.set(chapter.number, count);
-    label.append(checkbox, number, title, chapterMeta(chapter, count));
-    chapterList.append(label);
+    label.append(checkbox, number, title, count);
+    item.append(label, chapterActions(chapter));
+    chapterList.append(item);
   });
   refreshSetup();
 }
 
-/** Count text plus an inline "Reset progress" action. Lives inside the chapter <label>, so it must never toggle the checkbox. */
-function chapterMeta(chapter: Chapter, count: HTMLElement): HTMLElement {
-  const meta = document.createElement('span');
-  meta.className = 'chapter-meta';
-  const button = (text: string, className: string, label: string, onClick: () => void) => {
+/** "Reset progress" with an inline Reset / Keep confirmation. Sits beside the chapter <label>, not inside it. */
+function chapterActions(chapter: Chapter): HTMLElement {
+  const actions = document.createElement('div');
+  actions.className = 'chapter-actions';
+  const button = (text: string, className: string, label: string | null, onClick: () => void) => {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = className;
     el.textContent = text;
-    el.setAttribute('aria-label', label);
-    el.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onClick();
-    });
+    if (label) el.setAttribute('aria-label', label);
+    el.addEventListener('click', onClick);
     return el;
   };
   const confirm = document.createElement('span');
@@ -243,12 +243,12 @@ function chapterMeta(chapter: Chapter, count: HTMLElement): HTMLElement {
     close();
     refreshSetup();
   });
-  const no = button('Keep', 'chapter-action', 'Cancel reset', close);
+  const no = button('Keep', 'chapter-action', 'Keep progress', close);
   const question = document.createElement('span');
   question.textContent = 'Clear streaks and hidden words?';
   confirm.append(question, yes, no);
-  meta.append(count, ask, confirm);
-  return meta;
+  actions.append(ask, confirm);
+  return actions;
 }
 
 function selectedChapterNumbers(): number[] {
@@ -372,7 +372,7 @@ function showCard(): void {
   recognitionMonitor.reset();
   const card = deck[currentIndex];
   const token = runId;
-  cardShownAt = Date.now();
+  cardShownAt = performance.now();
   element('session-mode').textContent = { flip: 'Flip cards', auto: 'Auto listen', answer: 'Speak answers' }[settings.mode];
   element('session-direction').textContent = card.direction === 'es-en' ? 'ES → EN' : 'EN → ES';
   element('progress-text').textContent = `${currentIndex + 1} / ${deck.length}`;
@@ -448,7 +448,7 @@ function nextCard(): void {
 
 /** Flip cards / Auto listen: hide this card's word in its direction, then move on (cancelling speech and timers like Skip). */
 function knowIt(): void {
-  if (!active || settings.mode === 'answer' || Date.now() - cardShownAt < KNOW_IT_GUARD_MS) return;
+  if (!active || settings.mode === 'answer' || performance.now() - cardShownAt < KNOW_IT_GUARD_MS) return;
   const card = deck[currentIndex];
   progress.knowIt(card.chapter, card.word, card.direction);
   nextCard();
