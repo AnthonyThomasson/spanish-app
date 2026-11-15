@@ -403,6 +403,7 @@ function startListening(card: Card, token: number): void {
 }
 
 function pauseAfterRecognitionFailure(error: string): void {
+  runId += 1; // invalidate any pending listen retry so Resume starts from a clean slate
   paused = true;
   element('pause-button').textContent = 'Resume';
   setStatus(recognitionFailureMessage(error, document.hidden));

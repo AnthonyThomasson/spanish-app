@@ -77,6 +77,18 @@ describe('createBackgroundSession', () => {
     expect(plugin.update).toHaveBeenCalledOnce();
   });
 
+  it('retries start on the next sync if starting failed', async () => {
+    const { plugin } = fakePlugin();
+    plugin.start.mockRejectedValueOnce(new Error('boom'));
+    const session = createBackgroundSession(plugin, true);
+    session.sync(state);
+    await session.idle();
+    session.sync(state);
+    await session.idle();
+    expect(plugin.start).toHaveBeenCalledTimes(2);
+    expect(plugin.update).not.toHaveBeenCalled();
+  });
+
   it('forwards notification actions and can unsubscribe', async () => {
     const { plugin, listeners, remove } = fakePlugin();
     const session = createBackgroundSession(plugin, true);

@@ -40,7 +40,8 @@ export function createBackgroundSession(plugin: BackgroundSessionPlugin, enabled
         enqueue(() => plugin.update({ title, text, paused }));
       } else {
         running = true;
-        enqueue(() => plugin.start(state));
+        // If the service fails to start, forget it so the next sync tries again instead of updating nothing.
+        enqueue(() => plugin.start(state).catch((error) => { running = false; throw error; }));
       }
     },
     stop() {
