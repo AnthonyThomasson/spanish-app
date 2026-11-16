@@ -1,7 +1,11 @@
 import { Capacitor } from '@capacitor/core';
 import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-community/speech-recognition';
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
+import { ownAudio } from './own-audio';
 import { classifyNativeRecognitionError } from './recognition-errors';
+import { spokenText } from './spoken-text';
+import type { WordKind } from './types';
+import { chooseVoice, RecognitionLanguages, speechLanguage, type Language } from './voices';
 
 export interface SpeechRecognitionAlternativeLike {
   transcript: string;
@@ -37,13 +41,47 @@ export interface SpeechRecognitionLike {
 }
 
 type RecognitionConstructor = new () => SpeechRecognitionLike;
-type Language = 'es' | 'en';
 
 declare global {
   interface Window {
     SpeechRecognition?: RecognitionConstructor;
     webkitSpeechRecognition?: RecognitionConstructor;
   }
+}
+
+const recognitionLanguages = new RecognitionLanguages();
+
+/** The language tag to listen with: Argentine Spanish where the recognizer supports it. */
+export function recognitionLang(language: Language): string {
+  return recognitionLanguages.languageFor(language);
+}
+
+/**
+ * Switches Spanish recognition to es-ES after a recognizer refuses es-AR. False for any other language or when
+ * it already switched, so only a Spanish recognizer can trigger it and it cannot loop.
+ */
+export function fallBackFromArgentineRecognition(language: Language): boolean {
+  return recognitionLanguages.unsupported(language);
+}
+
+const DEVICE_LANGUAGES_TIMEOUT_MS = 1500;
+let deviceLanguages: Promise<void> | null = null;
+
+/**
+ * Asks the Android recognizer once which languages it offers (the plugin cannot report an unsupported language
+ * when listening: it only says "Didn't understand", which would loop silently). Unavailable on Android 13+, so
+ * a missing, failed or slow answer just keeps the default.
+ */
+function loadDeviceLanguages(): Promise<void> {
+  if (deviceLanguages) return deviceLanguages;
+  // A late answer still applies to later listens; only this wait is capped.
+  const request = NativeSpeechRecognition.getSupportedLanguages()
+    .then(({ languages }) => recognitionLanguages.setDeviceLanguages(languages))
+    .catch(() => undefined); // keep the default
+  let timer: number | undefined;
+  const timeout = new Promise<void>((resolve) => { timer = window.setTimeout(resolve, DEVICE_LANGUAGES_TIMEOUT_MS); });
+  deviceLanguages = Promise.race([request, timeout]).finally(() => window.clearTimeout(timer));
+  return deviceLanguages;
 }
 
 export function usingNativeSpeech(): boolean {
@@ -87,9 +125,11 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
         this.fail('not-allowed');
         return;
       }
+      const spanish = this.lang.toLowerCase().startsWith('es');
+      if (spanish) await loadDeviceLanguages();
       if (this.aborted) return;
       const { matches = [] } = await NativeSpeechRecognition.start({
-        language: this.lang,
+        language: spanish ? recognitionLang('es') : this.lang,
         maxResults: this.maxAlternatives,
         partialResults: false,
         popup: false,
@@ -149,7 +189,12 @@ export class Speaker {
     this.voices = window.speechSynthesis.getVoices();
   }
 
-  speak(text: string, language: Language): Promise<void> {
+  speak(text: string, language: Language, kind: WordKind = 'word'): Promise<void> {
+    const end = ownAudio.begin(); // the TTS engine takes audio focus; see own-audio.ts
+    return this.play(spokenText(text, kind), language).finally(end);
+  }
+
+  private play(text: string, language: Language): Promise<void> {
     if (usingNativeSpeech()) return this.speakNative(text, language);
     if (!('speechSynthesis' in window)) return Promise.resolve();
     this.refreshVoices();
@@ -157,9 +202,10 @@ export class Speaker {
 
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
+      const voice = this.voiceFor(language);
+      utterance.lang = speechLanguage(language, voice);
       utterance.rate = language === 'es' ? 0.88 : 0.95;
-      utterance.voice = this.voiceFor(language);
+      utterance.voice = voice;
       utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
       window.speechSynthesis.speak(utterance);
@@ -185,7 +231,7 @@ export class Speaker {
       if (this.nativePaused || this.nativeUtterance !== utterance) return;
       await TextToSpeech.speak({
         text: utterance.text,
-        lang: utterance.language === 'es' ? 'es-ES' : 'en-US',
+        lang: speechLanguage(utterance.language, voice),
         rate: utterance.language === 'es' ? 0.88 : 0.95,
         ...(voiceIndex >= 0 ? { voice: voiceIndex } : {}),
         queueStrategy: QueueStrategy.Flush,
@@ -200,16 +246,7 @@ export class Speaker {
   }
 
   private voiceFor(language: Language): SpeechSynthesisVoice | null {
-    const matching = this.voices.filter((voice) => voice.lang.toLowerCase().startsWith(language));
-    if (language === 'es') {
-      return matching.find((voice) => voice.lang.toLowerCase().startsWith('es-mx'))
-        ?? matching.find((voice) => voice.lang.toLowerCase().startsWith('es-es'))
-        ?? matching[0]
-        ?? null;
-    }
-    return matching.find((voice) => voice.lang.toLowerCase().startsWith('en-us'))
-      ?? matching[0]
-      ?? null;
+    return chooseVoice(this.voices, language);
   }
 
   pause(): void {

@@ -20,6 +20,10 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 
    The script uses `pypdf` to extract the embedded table images and macOS Vision to OCR them. It writes `data/vocab.json`; OCR intermediates go in `extraction/`. Both paths are ignored by Git. Use `--refresh-ocr` to run recognition again instead of using the cached OCR output.
 
+   Besides the word tables, the extractor emits example sentences (`kind: "sentence"`), `vos` commands, number words, interrogatives and section lists. The deck is Argentine: second-person (`tú`/`vosotros`) sentences are converted to `vos`/`ustedes` when the form is certain and dropped otherwise, and a curated word map (coche → auto, zumo → jugo…) is applied to the Spanish side. Sentences that would share an English prompt within a chapter get a short optional tag so the prompt is unambiguous (`Drink (vos).`, `Drink (Ud.).`, `I want to help them (m.).`, `I wanted to go (preterit).`); the tag is not spoken and not needed in the answer (`scripts/sentence_disambiguation.py`). Each card type lives in its own module and is registered in `scripts/card_parsers.py`.
+
+   Python tests for the extractor use invented text and synthetic OCR only; run them with `python3 -m unittest discover -s scripts -p "test_*.py"` (or `uv run --with pytest pytest scripts`).
+
 3. Start the app:
 
    ```sh
@@ -33,9 +37,18 @@ Prerequisites: Node.js 22.12+ and npm. Extracting the vocabulary also requires m
 - Select any combination of chapters, Spanish-to-English, English-to-Spanish, or Both (each card’s direction is picked at random, so the two are mixed), and shuffled or book order.
 - **Flip cards:** tap or click a card to reveal its answer.
 - **Auto listen:** hear the prompt, pause for the configurable thinking time, hear the answer, and advance automatically. Pause/resume and skip are available.
-- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. Three misses reveal the answer.
+- **Speak answers:** answer aloud to advance. Matching ignores case, accents, punctuation, leading articles, and “to” before verbs. Alternate meanings and optional parenthetical text are accepted. The answer is spoken at the end of every card: after “Correct” on a right answer, and instead of a retry on a wrong one (one try per card), then it moves on. A blank result counts as silence and listens again.
 
-Spanish prompts use an `es-ES`/`es-MX` voice when available; English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
+### Hiding mastered words
+
+Progress is saved locally (`localStorage`, also in the Android app) per word and per direction, so a word can be hidden Spanish-to-English and still be asked English-to-Spanish. If storage is unavailable the app works without saving.
+
+- In **Speak answers**, each correct answer adds to a word's streak. Reaching **Correct answers to master** (1–10, default 3) hides the word for **Hide mastered words for** (1–12 weeks, default 3). Any miss, including a wrong answer that reveals the answer, resets the streak; skipping changes nothing.
+- **Flip cards** and **Auto listen** have a **Know it** button that hides the word immediately and moves on.
+- Deck setup shows each chapter's hidden count (for the chosen direction) and counts only the cards that will be asked. **Include hidden words** adds them back for review: a correct answer doesn't extend the hide, and a miss un-hides the word. With **Both**, each card's direction is picked from the directions that aren't hidden, and a word hidden in both directions is left out (hidden count and summary follow). If every selected word is hidden, Start tells you when they return and offers to include them.
+- **Reset progress** on a chapter clears its streaks and hidden dates in both directions. Changing the settings applies from then on; words already hidden keep their date.
+
+Spanish prompts use an `es-AR` voice when available, then `es-MX` or `es-ES` (`src/voices.ts`); English uses an English voice. Speech recognition requires Chrome or Safari and microphone permission. It asks for `es-AR` and falls back to `es-ES` if the recognizer refuses it; on Android it also checks the device's supported languages (`getSupportedLanguages`). Recognition may use the browser vendor’s speech service; the vocabulary itself stays local.
 
 ### Use an Android phone
 
@@ -100,7 +113,7 @@ The notification has the same controls as the screen:
 - **Skip** moves to the next card. Like the on-screen Skip, skipping while paused resumes playback on the next card.
 - **Stop** ends the session and returns to deck setup.
 
-The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. Speak answers ignores the brief audio-focus change caused by its own speech recognizer while it is listening.
+The session also pauses itself (and never resumes on its own) when another app takes audio focus, such as a phone call. The notification then shows Resume. In Speak answers, the app’s own speech (text-to-speech and the speech recognizer) briefly takes audio focus too; a temporary focus loss while it plays, or within 2 seconds after it ends, does not pause the session. A permanent focus loss, a phone call (ringing, in a call, or a VoIP call) and Auto listen always pause as above. Each pause decision is logged to the WebView console with a `[session]` prefix (inspect it from `chrome://inspect`).
 
 Speak answers asks for microphone permission before the session starts, while the app is visible, so the background service can use the microphone. Android 14 and later do not allow starting a microphone service from the background. Auto listen never claims the microphone: its service only plays audio.
 

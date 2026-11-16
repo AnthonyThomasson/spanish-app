@@ -109,7 +109,8 @@ def main() -> None:
     output_path.write_text(json.dumps(vocabulary, ensure_ascii=False, indent=2) + "\n")
     (work_dir / "parser-stats.json").write_text(json.dumps(stats, indent=2) + "\n")
     word_count = sum(len(chapter["words"]) for chapter in vocabulary["chapters"])
-    print(f"Extracted {word_count} words across {len(starts)} chapters from {stats['acceptedImages']} table images.")
+    kinds = ", ".join(f"{count} {kind}" for kind, count in sorted(stats["cards"].items()))
+    print(f"Extracted {word_count} cards ({kinds}) across {len(starts)} chapters from {stats['acceptedImages']} images.")
     print(f"Vocabulary: {output_path}")
     print(f"Parser audit: {work_dir / 'parser-stats.json'}")
 

@@ -6,6 +6,7 @@ function controls(overrides: Partial<SessionControls> = {}): SessionControls {
     isActive: () => true,
     isPaused: () => false,
     isListening: () => false,
+    isOwnAudio: () => false,
     pause: vi.fn(),
     resume: vi.fn(),
     skip: vi.fn(),
@@ -51,6 +52,51 @@ describe('dispatchBackgroundAction', () => {
     expect(c.resume).not.toHaveBeenCalled();
     expect(c.skip).not.toHaveBeenCalled();
     expect(c.stop).not.toHaveBeenCalled();
+  });
+
+  it('ignores a transient audio-focus pause while our own speech or recognizer audio is active', () => {
+    const c = controls({ isOwnAudio: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus', { focusChange: -2, transient: true, call: false });
+    expect(c.pause).not.toHaveBeenCalled();
+  });
+
+  it('treats an audio-focus pause with no detail (older native build) as transient', () => {
+    const c = controls({ isOwnAudio: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus');
+    expect(c.pause).not.toHaveBeenCalled();
+  });
+
+  it('pauses on a permanent audio-focus loss even during our own audio or while listening', () => {
+    const c = controls({ isOwnAudio: () => true, isListening: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus', { focusChange: -1, transient: false, call: false });
+    expect(c.pause).toHaveBeenCalledOnce();
+  });
+
+  it('pauses when a call is ringing or in progress, even during our own audio', () => {
+    const c = controls({ isOwnAudio: () => true, isListening: () => true });
+    dispatchBackgroundAction('pause', c, 'audio-focus', { focusChange: -2, transient: true, call: true });
+    expect(c.pause).toHaveBeenCalledOnce();
+  });
+
+  it('logs why a pause was ignored or honoured', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    dispatchBackgroundAction('pause', controls({ isOwnAudio: () => true }), 'audio-focus', { focusChange: -2, transient: true, call: false });
+    dispatchBackgroundAction('pause', controls(), 'notification');
+    expect(info).toHaveBeenNthCalledWith(1, '[session] pause ignored source=audio-focus focusChange=-2 transient=true call=false listening=false ownAudio=true');
+    expect(info).toHaveBeenNthCalledWith(2, '[session] pause pausing source=notification focusChange=n/a transient=n/a call=n/a listening=false ownAudio=false');
+    info.mockRestore();
+  });
+
+  it('still pauses on an audio-focus loss when none of our audio is active', () => {
+    const c = controls({ isOwnAudio: () => false });
+    dispatchBackgroundAction('pause', c, 'audio-focus');
+    expect(c.pause).toHaveBeenCalledOnce();
+  });
+
+  it('pauses on a notification Pause even while our own audio is active', () => {
+    const c = controls({ isOwnAudio: () => true, isListening: () => true });
+    dispatchBackgroundAction('pause', c, 'notification');
+    expect(c.pause).toHaveBeenCalledOnce();
   });
 
   it('ignores an audio-focus pause while our own recognizer is listening', () => {

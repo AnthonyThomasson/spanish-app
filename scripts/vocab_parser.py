@@ -1,52 +1,27 @@
 import json
 import re
-import unicodedata
+from collections import Counter
 from pathlib import Path
 
-SPANISH_MARKERS = re.compile(
-    r"[áéíóúñü¿¡]|\b(?:el|la|los|las|un|una|yo|tú|usted|ustedes|nosotros|vosotros|él|ella|ellos|ellas|"
-    r"qué|quién|cómo|cuándo|dónde|para|con|sin|del|al|y|o|muy|más|menos)\b",
-    re.IGNORECASE,
+from card_types import WORD, Card
+from conjugation_cards import gloss_index, resolve_all
+
+from ocr_layout import (  # noqa: F401  (re-exported for callers of the old module layout)
+    CONJUGATION_MARKERS,
+    IGNORED_IMAGES,
+    ENGLISH_MARKERS,
+    HEADER_WORDS,
+    INVALID_PAIRS,
+    OCR_CORRECTIONS,
+    SPANISH_MARKERS,
+    center_y,
+    clean_text,
+    clusters_by_x,
+    is_vocabulary_pair,
+    language_score,
+    normalized_key,
 )
-ENGLISH_MARKERS = re.compile(
-    r"\b(?:the|to|a|an|and|or|i|you|he|she|it|we|they|your|my|his|her|their|our|"
-    r"what|where|when|who|how|why|with|without|for|from|in|on|at|of)\b",
-    re.IGNORECASE,
-)
-CONJUGATION_MARKERS = re.compile(r"\b(?:nosotros|vosotros|ustedes|uds\.?|ud\.?)\b", re.IGNORECASE)
-HEADER_WORDS = {"adjective", "adverb", "noun", "verbs", "spanish", "english", "examples", "infinitive", "stem", "ending"}
-OCR_CORRECTIONS = {
-    "to revieu": "to review",
-    "to throu": "to throw",
-    "the daun": "the dawn",
-    "frequenth": "frequently",
-    "where!": "where?",
-    "sundays!": "sundays?",
-    "somerne": "someone",
-    "faceloverlook": "face/overlook",
-    "cloudt": "cloudy",
-    "desparecerse": "desaparecerse",
-    "ilevar": "llevar",
-    "siath": "sixth",
-    "imposible": "impossible",
-    "ơ'clock": "o'clock",
-    "tomorrou": "tomorrow",
-    "litle": "little",
-    "vieu": "view",
-    "artice": "article",
-    "sweatt": "sweaty",
-}
-IGNORED_IMAGES = {
-    "p041_00.png", "p041_01.png", "p042_02.png", "p164_00.png", "p167_01.png",
-    "p168_00.png", "p189_01.png", "p194_02.png", "p253_04.png", "p258_00.png",
-    "p263_02.png", "p298_00.png", "p300_00.png", "p301_02.png", "p304_00.png",
-    "p378_00.png", "p382_01.png", "p444_00.png", "p444_01.png", "p453_00.png",
-    "p462_01.png", "p462_02.png", "p464_00.png", "p518_00.png", "p523_00.png",
-    "p523_01.png", "p527_02.png", "p528_00.png", "p545_00.png", "p545_02.png",
-    "p572_00.png", "p580_02.png", "p593_01.png", "p593_04.png", "p626_01.png",
-    "p628_01.png", "p640_00.png", "p644_00.png", "p678_01.png", "p686_00.png",
-    "p690_00.png", "p690_02.png", "p717_00.png",
-}
+
 PAIR_CORRECTIONS = {
     ("solo", "lane"): ("solo", "alone"),
     ("7 or", "to hear"): ("oír", "to hear"),
@@ -79,40 +54,13 @@ PAIR_CORRECTIONS = {
     ("hace dos días", "in the past) two days ago"): ("hace dos días", "two days ago"),
     ("caber", "to fit (one thing inside"): ("caber", "to fit (one thing inside)"),
     ("maquillarse", "immediacy) to put makeup on"): ("maquillarse", "to put makeup on"),
-    ("es impossible (que)", "it is impossible that"): ("es imposible (que)", "it is impossible (that)"),
+    ("es imposible (que)", "it is impossible that"): ("es imposible (que)", "it is impossible (that)"),
     ("es preciso (que)", "it is extremely necessary (that"): ("es preciso (que)", "it is extremely necessary (that)"),
     ("echar de menos", "to miss (a person or place"): ("echar de menos", "to miss (a person or place)"),
     ("ser todo oídos", "to he all ears"): ("ser todo oídos", "to be all ears"),
     ("en seguida", "ight awar"): ("en seguida", "right away"),
+    ("sobre todo", "ahora all"): ("sobre todo", "above all"),
 }
-INVALID_PAIRS = {("valer", "to male")}
-
-
-def clean_text(text: str) -> str:
-    text = re.sub(r"\s+", " ", text).strip()
-    text = re.sub(r"^¿\s+", "¿", text)
-    text = re.sub(r"\s+([?,!.])", r"\1", text)
-    for wrong, right in OCR_CORRECTIONS.items():
-        text = re.sub(rf"\b{re.escape(wrong)}\b", right, text, flags=re.IGNORECASE)
-    return text
-
-
-def language_score(text: str, pattern: re.Pattern[str]) -> int:
-    return len(pattern.findall(text))
-
-
-def clusters_by_x(observations: list[dict]) -> list[list[dict]]:
-    clusters: list[list[dict]] = []
-    for observation in sorted(observations, key=lambda item: item["x"]):
-        if not clusters or observation["x"] - clusters[-1][-1]["x"] > 0.075:
-            clusters.append([observation])
-        else:
-            clusters[-1].append(observation)
-    return clusters
-
-
-def center_y(observation: dict) -> float:
-    return observation["y"] + observation["height"] / 2
 
 
 def pair_columns(spanish: list[dict], english: list[dict]) -> list[tuple[str, str]]:
@@ -143,40 +91,16 @@ def pair_columns(spanish: list[dict], english: list[dict]) -> list[tuple[str, st
     for row in merged:
         if not row["english"]:
             continue
-        spanish_text = clean_text(" ".join(item["text"] for item in sorted(row["spanish"], key=lambda item: -center_y(item))))
-        english_text = clean_text(" ".join(item["text"] for item in sorted(row["english"], key=lambda item: -center_y(item))))
+        spanish_text = clean_text(" ".join(item["text"] for item in sorted(row["spanish"], key=lambda item: -center_y(item))), "es")
+        english_text = clean_text(" ".join(item["text"] for item in sorted(row["english"], key=lambda item: -center_y(item))), "en")
         if spanish_text.lower() in HEADER_WORDS or english_text.lower() in HEADER_WORDS:
             continue
         pairs.append((spanish_text, english_text))
     return pairs
 
 
-def is_vocabulary_pair(spanish: str, english: str) -> bool:
-    if (spanish, english) in INVALID_PAIRS:
-        return False
-    spanish = re.sub(r"^\d+\.\s*", "", spanish)
-    combined = f"{spanish} {english}"
-    if re.search(r"Construction|NOTE:|EXAMPLE|Present Tense|Past Tense|[<>•_{}]", combined, re.IGNORECASE):
-        return False
-    if not re.search(r"[a-záéíóúñ]", english, re.IGNORECASE):
-        return False
-    if re.fullmatch(r"(?:\d+\.\s*)?[a-záéíóúñ]+(?:ar|er|ir)", english, re.IGNORECASE):
-        return False
-    if re.search(r"[.!?]$", spanish) or (english.endswith(".") and not english.lower().endswith("etc.")):
-        return False
-    if len(spanish.split()) >= 4 and spanish[0].isupper():
-        return False
-    if len(english.split()) >= 4 and english[0].isupper():
-        return False
-    if len(spanish.split()) >= 4 and len(english.split()) >= 4:
-        return False
-    if len(spanish.split()) >= 4 and spanish.endswith(","):
-        return False
-    return bool(spanish and english)
-
-
 def clean_pair(pair: tuple[str, str]) -> tuple[str, str]:
-    spanish, english = clean_text(pair[0]), clean_text(pair[1])
+    spanish, english = clean_text(pair[0], "es"), clean_text(pair[1], "en")
     spanish = re.sub(r"^\d+(?:\.|\s)\s*", "", spanish)
     spanish = re.sub(r"\s+(?:segundo second|tercero third|quinto fifth|octavo eighth|noveno ninth|décimo tenth)$", "", spanish)
     spanish = re.sub(r"\s+(?:Expresiones con Verbos|Adjetivos|Pronombres)$", "", spanish)
@@ -249,12 +173,27 @@ def word_details(spanish: str, english: str, source_page: int) -> dict:
     return word
 
 
-def normalized_key(value: str) -> str:
-    value = unicodedata.normalize("NFD", value.lower())
-    return re.sub(r"[^a-z0-9]+", " ", "".join(character for character in value if not unicodedata.combining(character))).strip()
+def page_of(image: dict) -> int:
+    return int(re.search(r"p(\d+)_", Path(image["path"]).name).group(1))
+
+
+def card_entry(card: Card, source_page: int) -> dict:
+    """The vocab.json entry for a card. Words keep their original shape (no `kind`) so existing
+    progress keys survive; other kinds carry an explicit `kind`."""
+    if card.kind == WORD:
+        return word_details(card.spanish, card.english, source_page)
+    entry = {"spanish": card.spanish, "english": card.english, "sourcePage": source_page, "kind": card.kind}
+    if card.tense:
+        entry["tense"] = card.tense
+    return entry
 
 
 def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_titles: list[str]) -> tuple[dict, dict]:
+    from argentine import argentinize
+    from card_parsers import PARSERS
+    from second_person import Lexicon, convert_sentence, convert_word_card
+    from sentence_disambiguation import disambiguate_sentences
+
     images = json.loads(ocr_path.read_text())
     starts = sorted(chapter_starts.items())
     chapters = [
@@ -262,24 +201,79 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
         for number in range(1, len(chapter_titles) + 1)
     ]
     stats = {"images": len(images), "acceptedImages": 0, "rejectedImages": 0, "rejectedPages": {}}
-    seen = set()
-    for image in sorted(images, key=lambda item: int(re.search(r"p(\d+)_", Path(item["path"]).name).group(1))):
-        page = int(re.search(r"p(\d+)_", Path(image["path"]).name).group(1))
+    report: Counter = Counter()
+
+    # Pass 1: every card type, per image, in page order.
+    entries: list[tuple[int, int, Card]] = []
+    for image in sorted(images, key=page_of):
+        page = page_of(image)
         chapter_number = max((number for number, start in starts if start <= page), default=0)
         if not chapter_number:
             continue
-        pairs = parse_image(image)
-        if not pairs:
+        cards = [Card(spanish, english) for spanish, english in parse_image(image)]
+        located = {**image, "chapter": chapter_number}  # parsers may be chapter-specific (present-tense tables)
+        for parser in PARSERS:
+            cards.extend(parser(located, report))
+        if not cards:
             stats["rejectedImages"] += 1
             stats["rejectedPages"][str(page)] = stats["rejectedPages"].get(str(page), 0) + 1
             continue
         stats["acceptedImages"] += 1
-        for spanish, english in pairs:
-            key = (chapter_number, normalized_key(spanish), normalized_key(english))
-            if key in seen:
+        entries.extend((chapter_number, page, card) for card in cards)
+
+    # Pass 2: tú/vosotros sentences become vos/ustedes (or are dropped), then the Argentine word map.
+    lexicon = Lexicon.from_word_cards(card for _, _, card in entries)
+    indexes = {"present": lexicon.tu_present_index(), "imperative": lexicon.tu_imperative_index()}
+    # Conjugation cards get their English now that every infinitive's word card is known.
+    entries = resolve_all(entries, gloss_index(card for _, _, card in entries), report)
+    seen = set()
+    # Chapters that already list a plain "se" card (himself, themselves, yourselves...).
+    chapters_with_se = {
+        number for number, _, card in entries if card.kind == WORD and card.spanish.strip().lower() == "se"
+    }
+    for chapter_number, page, card in entries:
+        spanish = card.spanish
+        if card.needs_second_person_pass:
+            outcome = convert_sentence(spanish, card.english, lexicon, indexes)
+            report[f"second_person.{outcome.status}"] += 1
+            if outcome.status == "dropped":
+                report[f"second_person.dropped.{outcome.reason}"] += 1
                 continue
-            seen.add(key)
-            chapters[chapter_number - 1]["words"].append(word_details(spanish, english, page))
+            if outcome.status == "converted":
+                report[f"second_person.converted.{outcome.reason}"] += 1
+            spanish = outcome.spanish
+        if card.kind == WORD:
+            converted, english = convert_word_card(spanish, card.english)
+            if converted == "se" and spanish.lower() == "os" and chapter_number in chapters_with_se:
+                report["duplicates.word"] += 1  # "os" -> "se" would repeat the chapter's own "se" card
+                continue
+            if (converted, english) != (spanish, card.english):
+                report["second_person.word_cards_converted"] += 1
+            spanish = converted
+            card = Card(card.spanish, english, card.kind, card.needs_second_person_pass)
+        mapped = argentinize(spanish, card.english, card.kind)
+        if mapped != spanish:
+            report[f"argentine.changed.{card.kind}"] += 1
+        # An interrogative word ("¿cómo?") is taught once, in the first chapter that lists it.
+        is_interrogative = card.kind == WORD and mapped.startswith("¿") and mapped.endswith("?")
+        key = (None if is_interrogative else chapter_number, card.kind, normalized_key(mapped), normalized_key(card.english))
+        if key in seen:
+            report[f"duplicates.{card.kind}"] += 1
+            continue
+        seen.add(key)
+        chapters[chapter_number - 1]["words"].append(
+            card_entry(Card(mapped, card.english, card.kind, tense=card.tense), page)
+        )
+
+    # Pass 3: sentence cards that share an English prompt within a chapter get a short optional tag.
+    for chapter in chapters:
+        chapter["words"] = disambiguate_sentences(chapter["words"], report)
+
+    stats["cards"] = dict(Counter(word.get("kind", WORD) for chapter in chapters for word in chapter["words"]))
+    stats["cardsByChapter"] = {
+        str(chapter["number"]): dict(Counter(word.get("kind", WORD) for word in chapter["words"])) for chapter in chapters
+    }
+    stats["report"] = dict(sorted(report.items()))
     return {
         "source": "Complete Spanish Step-by-Step by Bárbara Bregstein. Regenerate locally from your own PDF.",
         "chapters": chapters,

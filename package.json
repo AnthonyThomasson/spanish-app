@@ -12,7 +12,8 @@
     "android:apk": ". scripts/android-env.sh && npm run android:sync && cd android && ./gradlew assembleDebug && cd .. && mkdir -p release && cp android/app/build/outputs/apk/debug/app-debug.apk release/spanish-app.apk",
     "android:serve": "python3 -m http.server 8787 --bind 0.0.0.0 --directory release",
     "phone": "node scripts/phone.mjs",
-    "test": "vitest run && node --test scripts/*.test.mjs"
+    "test": "vitest run && node --test scripts/*.test.mjs",
+    "test:py": "python3 -m unittest discover -s scripts -p \"test_*.py\""
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
