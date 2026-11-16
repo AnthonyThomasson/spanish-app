@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { SpeechRecognition as NativeSpeechRecognition } from '@capacitor-community/speech-recognition';
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
 import { ownAudio } from './own-audio';
@@ -88,6 +88,27 @@ export function usingNativeSpeech(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 }
 
+/**
+ * Native recognizer that records the microphone in this app and pipes it to the system recognizer
+ * (Android 13+), so Speak answers keeps hearing you with the screen off or the app in the background.
+ */
+interface OwnMicRecognitionPlugin {
+  isSupported(): Promise<{ supported: boolean }>;
+  listen(options: { language: string; maxResults: number }): Promise<{ matches?: string[] }>;
+  stop(): Promise<void>;
+}
+
+const OwnMicRecognition = registerPlugin<OwnMicRecognitionPlugin>('OwnMicRecognition');
+let ownMicSupported: Promise<boolean> | undefined;
+
+/** Whether the own-microphone recognizer can be used; false on older native builds without the plugin. */
+function canUseOwnMic(): Promise<boolean> {
+  ownMicSupported ??= OwnMicRecognition.isSupported()
+    .then(({ supported }) => supported)
+    .catch(() => false);
+  return ownMicSupported;
+}
+
 class AndroidSpeechRecognition implements SpeechRecognitionLike {
   lang = 'en-US';
   continuous = false;
@@ -98,6 +119,7 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
   onend: (() => void) | null = null;
   private aborted = false;
   private ended = false;
+  private ownMic = false;
 
   start(): void {
     void this.begin();
@@ -110,7 +132,8 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
   abort(): void {
     if (this.aborted) return;
     this.aborted = true;
-    void NativeSpeechRecognition.stop().finally(() => this.finish());
+    const stopped = this.ownMic ? OwnMicRecognition.stop() : NativeSpeechRecognition.stop();
+    void stopped.catch(() => {}).finally(() => this.finish());
   }
 
   private async begin(): Promise<void> {
@@ -128,12 +151,17 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
       const spanish = this.lang.toLowerCase().startsWith('es');
       if (spanish) await loadDeviceLanguages();
       if (this.aborted) return;
-      const { matches = [] } = await NativeSpeechRecognition.start({
-        language: spanish ? recognitionLang('es') : this.lang,
-        maxResults: this.maxAlternatives,
-        partialResults: false,
-        popup: false,
-      });
+      const language = spanish ? recognitionLang('es') : this.lang;
+      this.ownMic = await canUseOwnMic();
+      if (this.aborted) return;
+      const { matches = [] } = this.ownMic
+        ? await OwnMicRecognition.listen({ language, maxResults: this.maxAlternatives })
+        : await NativeSpeechRecognition.start({
+            language,
+            maxResults: this.maxAlternatives,
+            partialResults: false,
+            popup: false,
+          });
       if (this.aborted) return;
       if (!matches.length) {
         this.fail('no-speech');

@@ -5,6 +5,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.WindowManager;
 import android.webkit.WebView;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -56,6 +57,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     public void onAction(SessionAction action, SessionSource source, FocusLoss focusLoss) {
         if (action == SessionAction.STOP) {
             restoreWebViewPriority();
+            keepScreenOn(false);
         }
         JSObject event = new JSObject();
         event.put("action", action.wireName());
@@ -100,6 +102,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
             return;
         }
         keepWebViewRunning();
+        keepScreenOn(!state.paused());
         call.resolve();
     }
 
@@ -120,6 +123,7 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
             call.reject("Could not update the background session: " + e.getMessage());
             return;
         }
+        keepScreenOn(BackgroundSessionService.isActive() && !Boolean.TRUE.equals(call.getBoolean("paused", false)));
         if (BackgroundSessionService.isActive()) {
             // Cheap and idempotent; covers a screen-off or delayed hide after the post-onPause window.
             mainHandler.post(this::applyKeepRunning);
@@ -143,7 +147,23 @@ public class BackgroundSessionPlugin extends Plugin implements SessionEvents.Lis
     public void stop(PluginCall call) {
         BackgroundSessionService.stop(getContext());
         restoreWebViewPriority();
+        keepScreenOn(false);
         call.resolve();
+    }
+
+    /**
+     * Stops the screen timing out while a session runs unpaused: it's hands-free, so there are no touches
+     * to keep it awake. Turning the screen off by hand still works and the session keeps going.
+     */
+    private void keepScreenOn(boolean on) {
+        mainHandler.post(() -> {
+            if (getActivity() == null) return;
+            if (on) {
+                getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } else {
+                getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
+        });
     }
 
     // ---- Keeping the WebView alive while the activity is not visible -------------------------

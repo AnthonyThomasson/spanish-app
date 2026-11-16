@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Local plugins must be registered before super.onCreate() initialises the bridge.
         registerPlugin(BackgroundSessionPlugin.class);
+        registerPlugin(OwnMicRecognitionPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
