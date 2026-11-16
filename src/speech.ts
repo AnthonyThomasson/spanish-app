@@ -96,10 +96,27 @@ interface OwnMicRecognitionPlugin {
   isSupported(): Promise<{ supported: boolean }>;
   listen(options: { language: string; maxResults: number }): Promise<{ matches?: string[] }>;
   stop(): Promise<void>;
+  /** One line per finished attempt describing what it heard; used to debug recognition on real phones. */
+  addListener(eventName: 'diagnostic', listener: (event: { text: string }) => void): Promise<{ remove(): Promise<void> }>;
 }
 
 const OwnMicRecognition = registerPlugin<OwnMicRecognitionPlugin>('OwnMicRecognition');
 let ownMicSupported: Promise<boolean> | undefined;
+/**
+ * Whether to record the microphone ourselves. The system recognizer hears fine while the app is on screen,
+ * so by default only background listening (screen off, another app) uses our own recording.
+ */
+let preferOwnMic: () => boolean = () => false;
+
+export function useOwnMicWhen(predicate: () => boolean): void {
+  preferOwnMic = predicate;
+}
+
+/** Calls back with each own-microphone attempt's diagnostic line. No-op off Android or on older native builds. */
+export function onOwnMicDiagnostic(listener: (text: string) => void): void {
+  if (!usingNativeSpeech()) return;
+  void OwnMicRecognition.addListener('diagnostic', ({ text }) => listener(text)).catch(() => {});
+}
 
 /** Whether the own-microphone recognizer can be used; false on older native builds without the plugin. */
 function canUseOwnMic(): Promise<boolean> {
@@ -152,7 +169,7 @@ class AndroidSpeechRecognition implements SpeechRecognitionLike {
       if (spanish) await loadDeviceLanguages();
       if (this.aborted) return;
       const language = spanish ? recognitionLang('es') : this.lang;
-      this.ownMic = await canUseOwnMic();
+      this.ownMic = preferOwnMic() && (await canUseOwnMic());
       if (this.aborted) return;
       const { matches = [] } = this.ownMic
         ? await OwnMicRecognition.listen({ language, maxResults: this.maxAlternatives })

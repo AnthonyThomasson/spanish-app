@@ -10,7 +10,7 @@ import { RecognitionMonitor, recognitionFailureMessage, recognitionFailureNotice
 import { dispatchBackgroundAction } from './session-actions';
 import { singleFlight } from './single-flight';
 import { shouldAutoPauseWhenHidden } from './session-policy';
-import { fallBackFromArgentineRecognition, recognitionConstructor, recognitionLang, Speaker, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
+import { fallBackFromArgentineRecognition, onOwnMicDiagnostic, recognitionConstructor, recognitionLang, Speaker, useOwnMicWhen, usingNativeSpeech, type SpeechRecognitionLike } from './speech';
 import type { Card, CardDirection, Chapter, Direction, Mode, Vocabulary } from './types';
 import { createWait } from './wait';
 
@@ -108,6 +108,7 @@ app.innerHTML = `
           <p id="session-status">Take your time.</p>
         </div>
         <p id="heard-text" class="heard-text"></p>
+        <p id="mic-diagnostic" class="mic-diagnostic" hidden></p>
         <div class="session-controls">
           <button id="pause-button" class="secondary" type="button" hidden>Pause</button>
           <button id="know-button" class="secondary" type="button" hidden>Know it</button>
@@ -711,6 +712,14 @@ void backgroundSession.onAction((action, source, focus) => dispatchBackgroundAct
   stop: returnToSetup,
 }, source, focus));
 void backgroundSession.watchAppState();
+// Background listening records the mic itself (Android only lets our own process use it there).
+useOwnMicWhen(() => backgroundSession.isBackground());
+// Temporary: shows what the last background listen saw, so recognition problems can be diagnosed on the phone.
+onOwnMicDiagnostic((text) => {
+  const line = element('mic-diagnostic');
+  line.textContent = `Last background listen: ${text}`;
+  line.hidden = false;
+});
 // Clear any notification left behind by a previous page load.
 backgroundSession.stop();
 

@@ -118,6 +118,15 @@ public class OwnMicRecognitionPlugin extends Plugin {
         private ParcelFileDescriptor readFd;
         private ParcelFileDescriptor writeFd;
         private volatile boolean capturing;
+        // Diagnostics, written by the recording thread and read on the main thread when the attempt ends.
+        private final long startedAt = System.currentTimeMillis();
+        private volatile double peakRms;
+        private volatile double lastThreshold;
+        private volatile boolean heardSpeech;
+        private volatile String captureEnd = "running";
+        private volatile long bytesSent;
+        private volatile boolean recognizerStoppedReading;
+        private int recognizerError = -1;
         private boolean ready;
         private boolean finished;
         private final Runnable resultTimeout = () -> fail(RecognizerErrors.TIMEOUT);
@@ -202,10 +211,16 @@ public class OwnMicRecognitionPlugin extends Plugin {
                     }
                     try {
                         out.write(frame, 0, n);
+                        bytesSent += n;
                     } catch (IOException e) {
+                        recognizerStoppedReading = true;
                         break; // the recognizer closed its end; its own callback reports why
                     }
-                    verdict = endpointer.onFrame(SpeechEndpointer.rms(frame, n), SpeechEndpointer.allZero(frame, n));
+                    double rms = SpeechEndpointer.rms(frame, n);
+                    peakRms = Math.max(peakRms, rms);
+                    verdict = endpointer.onFrame(rms, SpeechEndpointer.allZero(frame, n));
+                    lastThreshold = endpointer.threshold();
+                    heardSpeech = endpointer.heardSpeech();
                     if (verdict != SpeechEndpointer.Verdict.CONTINUE) break;
                 }
             } catch (IOException ignored) {
@@ -217,6 +232,7 @@ public class OwnMicRecognitionPlugin extends Plugin {
                 rec.release();
                 closeQuietly(writeFd); // end of audio for the recognizer
             }
+            captureEnd = verdict.name().toLowerCase();
             Log.i(TAG, "capture ended: " + verdict + (readFailed ? " (read failed)" : "") + ", heard speech: " + endpointer.heardSpeech());
             final SpeechEndpointer.Verdict ended = verdict;
             final boolean failedRead = readFailed;
@@ -233,11 +249,9 @@ public class OwnMicRecognitionPlugin extends Plugin {
                 case SILENCED:
                     fail(RecognizerErrors.MIC_SILENCED);
                     return;
-                case NO_SPEECH:
-                    fail(RecognizerErrors.NO_SPEECH);
-                    return;
                 default:
-                    // End of speech, or the recognizer stopped reading: give it a moment to answer.
+                    // End of speech, no speech heard, or the recognizer stopped reading: the recognizer has the
+                    // last word (our loudness check may simply have missed a quiet voice).
                     try {
                         recognizer.stopListening();
                     } catch (RuntimeException ignored) {}
@@ -249,7 +263,30 @@ public class OwnMicRecognitionPlugin extends Plugin {
             if (finished) return;
             Log.i(TAG, "failed: " + message);
             finish();
+            reportDiagnostic("failed: " + message);
             call.reject(message);
+        }
+
+        /** One line for the screen saying what this attempt saw; temporary, to debug recognition on real phones. */
+        private void reportDiagnostic(String outcome) {
+            String text = String.format(
+                java.util.Locale.US,
+                "%s recognizer%s · peak %.0f (speech above %.0f) · speech %s · audio ended: %s%s · %.1f KB sent in %.1f s · %s",
+                onDevice ? "on-device" : "default",
+                ready ? "" : " (never ready)",
+                peakRms,
+                lastThreshold,
+                heardSpeech ? "yes" : "no",
+                captureEnd,
+                recognizerStoppedReading ? " (recognizer stopped reading)" : "",
+                bytesSent / 1024.0,
+                (System.currentTimeMillis() - startedAt) / 1000.0,
+                recognizerError >= 0 ? outcome + " (error " + recognizerError + ")" : outcome
+            );
+            Log.i(TAG, text);
+            JSObject event = new JSObject();
+            event.put("text", text);
+            notifyListeners("diagnostic", event);
         }
 
         private void finish() {
@@ -285,6 +322,7 @@ public class OwnMicRecognitionPlugin extends Plugin {
             ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             Log.i(TAG, "results: " + matches);
             finish();
+            reportDiagnostic("heard " + (matches == null || matches.isEmpty() ? "nothing" : "\"" + matches.get(0) + "\""));
             JSObject ret = new JSObject();
             ret.put("matches", new JSArray(matches == null ? new ArrayList<String>() : matches));
             call.resolve(ret);
@@ -294,6 +332,7 @@ public class OwnMicRecognitionPlugin extends Plugin {
         public void onError(int error) {
             if (finished) return;
             Log.i(TAG, "recognizer error " + error + " (ready: " + ready + ", on-device: " + onDevice + ")");
+            recognizerError = error;
             if (!onDevice && !isRetry && RecognizerErrors.suggestsUnsupportedAudioSource(error, ready) && onDeviceAvailable()) {
                 Log.i(TAG, "default recognizer refused piped audio; switching to on-device");
                 preferOnDevice = true;

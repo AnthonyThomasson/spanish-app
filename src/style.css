@@ -196,3 +196,5 @@ footer { margin-top: auto; min-height: 76px; display: flex; align-items: center;
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.mic-diagnostic { margin: 0 0 8px; color: var(--muted); font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
