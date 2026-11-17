@@ -227,6 +227,31 @@ describe('sentence matching: parentheticals', () => {
   });
 });
 
+describe('sentence matching: formal and plural labels', () => {
+  it('does not need the label to be said', () => {
+    expect(isCorrectAnswer('where are you from', 'Formal: Where are you from?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer("don't yell", "Plural: Don't yell.", 'sentence')).toBe(true);
+    expect(isCorrectAnswer('you are', 'Formal: you are (estar)', 'conjugation')).toBe(true);
+    expect(isCorrectAnswer('you can', 'Formal: you are able / you can', 'conjugation')).toBe(true);
+  });
+
+  it('accepts the label when it is said', () => {
+    expect(isCorrectAnswer('formal where are you from', 'Formal: Where are you from?', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('formal you are', 'Formal: you are (estar)', 'conjugation')).toBe(true);
+  });
+
+  it('still needs the rest of the answer', () => {
+    expect(isCorrectAnswer('formal', 'Formal: you are', 'conjugation')).toBe(false);
+    expect(isCorrectAnswer('where are you', 'Formal: Where are you from?', 'sentence')).toBe(false);
+    expect(isCorrectAnswer('plural you are', 'Formal: you are', 'conjugation')).toBe(false);
+  });
+
+  it('only treats a label at the very start as one', () => {
+    expect(isCorrectAnswer('it is formal', 'It is formal.', 'sentence')).toBe(true);
+    expect(isCorrectAnswer('it is', 'It is formal.', 'sentence')).toBe(false);
+  });
+});
+
 describe('sentence matching: long-sentence tolerance', () => {
   const english = 'we eat dinner with the grandmother every night';
   const spanish = 'cenamos con mi abuela que vive en una casa vieja';

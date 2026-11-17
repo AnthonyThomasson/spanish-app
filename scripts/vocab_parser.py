@@ -265,9 +265,11 @@ def build_vocabulary(ocr_path: Path, chapter_starts: dict[int, int], chapter_tit
             card_entry(Card(mapped, card.english, card.kind, tense=card.tense), page)
         )
 
-    # Pass 3: sentence cards that share an English prompt within a chapter get a short optional tag.
+    # Pass 3: formal / plural sentences are labelled, and sentence cards that share an English prompt within a
+    # chapter get a short optional tag.
+    english_verbs = set().union(*lexicon.glosses.values())
     for chapter in chapters:
-        chapter["words"] = disambiguate_sentences(chapter["words"], report)
+        chapter["words"] = disambiguate_sentences(chapter["words"], report, english_verbs, set(lexicon.glosses))
 
     stats["cards"] = dict(Counter(word.get("kind", WORD) for chapter in chapters for word in chapter["words"]))
     stats["cardsByChapter"] = {

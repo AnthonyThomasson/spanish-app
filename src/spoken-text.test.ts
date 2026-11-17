@@ -4,7 +4,7 @@ import { spokenText } from './spoken-text';
 describe('spokenText for conjugation cards', () => {
   it('leaves out parenthetical notes', () => {
     expect(spokenText('they (m.) think', 'conjugation')).toBe('they think');
-    expect(spokenText('you (formal) think', 'conjugation')).toBe('you think');
+    expect(spokenText('Formal: you think (pensar)', 'conjugation')).toBe('Formal: you think');
     expect(spokenText('yo me siento (sentarse)', 'conjugation')).toBe('yo me siento');
     expect(spokenText('I am (estar)', 'conjugation')).toBe('I am');
   });
@@ -39,10 +39,6 @@ describe('spokenText for other cards', () => {
 
 describe('spokenText for sentence cards with a disambiguation tag', () => {
   it('leaves out the tag before the closing punctuation', () => {
-    expect(spokenText('Sing (vos).', 'sentence')).toBe('Sing.');
-    expect(spokenText("Don't wait (Ud.).", 'sentence')).toBe("Don't wait.");
-    expect(spokenText('Hold the door (Uds.).', 'sentence')).toBe('Hold the door.');
-    expect(spokenText('Where do you work (Ud.)?', 'sentence')).toBe('Where do you work?');
     expect(spokenText('I want to call them (m.).', 'sentence')).toBe('I want to call them.');
     expect(spokenText('I want to call them (f.).', 'sentence')).toBe('I want to call them.');
     expect(spokenText('I painted the fence (preterit).', 'sentence')).toBe('I painted the fence.');
@@ -54,7 +50,12 @@ describe('spokenText for sentence cards with a disambiguation tag', () => {
   });
 
   it('leaves out the tag of every alternative of a merged card', () => {
-    expect(spokenText('Sing (vos). / Have a sing (vos).', 'sentence')).toBe('Sing. / Have a sing.');
+    expect(spokenText('I see them (m.). / I watch them (m.).', 'sentence')).toBe('I see them. / I watch them.');
+  });
+
+  it('speaks the formal and plural labels, which say how to answer', () => {
+    expect(spokenText('Formal: Where are you from?', 'sentence')).toBe('Formal: Where are you from?');
+    expect(spokenText("Plural: Don't yell.", 'sentence')).toBe("Plural: Don't yell.");
   });
 
   it("keeps a sentence's own parentheticals, which carry meaning", () => {
@@ -67,6 +68,20 @@ describe('spokenText for sentence cards with a disambiguation tag', () => {
   });
 
   it('speaks the text as written when only the tag would be left', () => {
-    expect(spokenText('(vos)', 'sentence')).toBe('(vos)');
+    expect(spokenText('(m.)', 'sentence')).toBe('(m.)');
+  });
+});
+
+describe('spokenText for Ud. and Uds.', () => {
+  it('says the abbreviations as words on every kind of card', () => {
+    expect(spokenText('¿De dónde es Ud.?', 'sentence')).toBe('¿De dónde es usted?');
+    expect(spokenText('No griten Uds.', 'sentence')).toBe('No griten ustedes');
+    expect(spokenText('Ud. está', 'conjugation')).toBe('usted está');
+    expect(spokenText('Uds. son', 'conjugation')).toBe('ustedes son');
+    expect(spokenText('Ud., Uds.')).toBe('usted, ustedes');
+  });
+
+  it('leaves words that only start the same alone', () => {
+    expect(spokenText('Udine', 'word')).toBe('Udine');
   });
 });

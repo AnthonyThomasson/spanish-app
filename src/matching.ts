@@ -128,8 +128,25 @@ function sentenceAlternatives(expected: string, language?: NumberLanguage): Read
     .filter((alternative) => alternative.tokens.length > 0);
 }
 
-function isCorrectSentence(spoken: string, expected: string, language?: NumberLanguage): boolean {
-  const actual = reading(spoken, language);
+/**
+ * How a prompt addressed to Ud. or Uds. starts ("Formal: Where are you from?", "Formal: you are"); a plain "you"
+ * is vos. scripts/sentence_disambiguation.py and scripts/conjugation_english.py write it. It is optional when
+ * answering, and may also be said.
+ */
+const ADDRESSEE_LABEL = /^\s*(Formal|Plural):\s*/i;
+
+function withoutAddresseeLabel(expected: string, actual: Reading): [string, Reading] {
+  const label = ADDRESSEE_LABEL.exec(expected);
+  if (!label) return [expected, actual];
+  const rest = expected.slice(label[0].length);
+  if (actual.tokens[0] !== label[1].toLowerCase() || actual.tokens.length < 2) return [rest, actual];
+  const tokens = actual.tokens.slice(1);
+  const pronoun = subjectPronouns[tokens[0]] && tokens.length > 1 ? subjectPronouns[tokens[0]] : null;
+  return [rest, { tokens, pronoun }];
+}
+
+function isCorrectSentence(spoken: string, expectedText: string, language?: NumberLanguage): boolean {
+  const [expected, actual] = withoutAddresseeLabel(expectedText, reading(spoken, language));
   if (!actual.tokens.length) return false;
   return sentenceAlternatives(expected, language).some((alternative) => {
     const a = actual.tokens;

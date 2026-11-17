@@ -1,11 +1,16 @@
 """Make the prompts of a chapter's sentence cards unambiguous.
 
-Once every card of a chapter exists, some sentence cards share an English prompt but have different Spanish
-answers ("Drink." for Bebé / Beba / Beban, "I wanted to go." for quise / quería). Asked English to Spanish, the
-learner cannot know which one is wanted, so the English gets a short parenthetical tag that the app treats as
-optional when answering and does not speak:
+The deck is Argentine, so a plain "you" in an English prompt means vos. A sentence addressed to Ud. or Uds.
+says so up front, in words a voice can read: "Formal: Where are you from?", "Plural: Don't yell." The label is
+added to every sentence whose Spanish is certainly formal or plural (an explicit Ud./Uds., or a command whose
+English starts with a verb the book teaches), and the app treats it as optional when answering.
 
-    (vos) (Ud.) (Uds.)             commands and "you" sentences, from the Spanish form or pronoun
+Once every card of a chapter exists, some sentence cards still share an English prompt but have different Spanish
+answers ("Drink." for Bebé / Beba / Beban, "I wanted to go." for quise / quería). Asked English to Spanish, the
+learner cannot know which one is wanted. A vos / Ud. / Uds. group is told apart with the same labels (the vos card
+keeps its plain English); any other group gets a short parenthetical tag that the app treats as optional when
+answering and does not speak:
+
     (m.) (f.)                      a clitic that differs only in gender (ayudarlos / ayudarlas)
     (preterit) (imperfect)         only when the differing verb forms are certainly one or the other
     (pronoun before) (pronoun attached)   me la va a dar / va a dármela
@@ -20,15 +25,17 @@ import re
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 
-from spanish_verbs import strip_accents
+from spanish_verbs import peel_clitics, strip_accents
 
 SENTENCE = "sentence"
-# The fixed tags (besides "Sp. <words>"); src/spoken-text.ts strips these, and a test keeps the two in step.
 VOS, UD, UDS = "vos", "Ud.", "Uds."
+# How a formal or plural prompt starts. src/matching.ts treats it as optional; keep ADDRESSEE_LABEL there in step.
+ADDRESSEE_LABELS = {UD: "Formal", UDS: "Plural"}
+# The fixed tags (besides "Sp. <words>"); src/spoken-text.ts strips these, and a test keeps the two in step.
 MASCULINE, FEMININE = "m.", "f."
 PRETERIT, IMPERFECT_TENSE = "preterit", "imperfect"
 BEFORE, ATTACHED = "pronoun before", "pronoun attached"
-FIXED_TAGS = (VOS, UD, UDS, MASCULINE, FEMININE, PRETERIT, IMPERFECT_TENSE, BEFORE, ATTACHED)
+FIXED_TAGS = (MASCULINE, FEMININE, PRETERIT, IMPERFECT_TENSE, BEFORE, ATTACHED)
 TOKEN = re.compile(r"[a-záéíóúüñ]+")
 SUBJECTS = {"yo", "el", "ella", "ellos", "ellas", "nosotros", "ud", "uds", "vos"}
 CLITICS = {"se", "te", "me", "nos", "lo", "la", "los", "las", "le", "les"}
@@ -54,7 +61,7 @@ def tokens(text: str) -> list[str]:
 
 
 def insert_tag(english: str, tag: str) -> str:
-    """'Drink.' -> 'Drink (vos).' The tag goes before the closing punctuation, in each ' / ' alternative."""
+    """'Drink.' -> 'Drink (m.).' The tag goes before the closing punctuation, in each ' / ' alternative."""
 
     def tagged(part: str) -> str:
         terminal = re.search(r"[.?!]+[\"”'’]*$", part)
@@ -63,6 +70,18 @@ def insert_tag(english: str, tag: str) -> str:
         return f"{part[:terminal.start()]} ({tag}){terminal.group(0)}"
 
     return " / ".join(tagged(part) for part in english.split(" / "))
+
+
+def has_addressee_label(english: str) -> bool:
+    return any(english.startswith(f"{label}: ") for label in ADDRESSEE_LABELS.values())
+
+
+def label_addressee(english: str, addressee: str) -> str:
+    """'Drink.' -> 'Formal: Drink.' for Ud. and 'Plural: Drink.' for Uds. A vos prompt stays as it is."""
+    label = ADDRESSEE_LABELS.get(addressee)
+    if not label or has_addressee_label(english):
+        return english
+    return f"{label}: {english}"
 
 
 # --- classifiers: each takes a card's Spanish and returns a tag, or None when it cannot say -------------
@@ -82,11 +101,19 @@ def explicit_pronoun(words: list[str]) -> str | None:
     return None
 
 
-def classify_command(spanish: str, english: str) -> str | None:
-    """vos / Ud. / Uds. for a short imperative, from its pronoun or its verb ending."""
+def is_vos_imperative(word: str, infinitives: set[str]) -> bool:
+    """'escribime', 'dámela', 'ponete': a vos imperative is the infinitive without its r, pronouns attached."""
+    return any(len(verb) > 1 and strip_accents(verb) + "r" in infinitives for verb, _ in peel_clitics(word))
+
+
+def classify_command(
+    spanish: str, english: str, infinitives: set[str] = frozenset(), max_words: int = 6
+) -> str | None:
+    """vos / Ud. / Uds. for a short imperative, from its pronoun or its verb ending. `infinitives` (the verbs
+    the book teaches) lets an unaccented vos form with attached pronouns ('Dame', 'Escribime') be recognised."""
     words = tokens(spanish)
     english_words = tokens(english)
-    if "¿" in spanish or not words or len(words) > 6 or len(english_words) > 6:
+    if "¿" in spanish or not words or len(words) > max_words or len(english_words) > max_words:
         return None
     if english_words[:2] == ["don", "t"]:
         english_words = english_words[2:]
@@ -106,7 +133,7 @@ def classify_command(spanish: str, english: str) -> str | None:
         if verb.endswith("n"):
             return UDS
         return UD if verb[-1] in "ea" else None
-    if verb[-1] in "áéí":
+    if verb[-1] in "áéí" or is_vos_imperative(verb, infinitives):
         return VOS
     if verb.endswith("nse"):
         return UDS
@@ -136,6 +163,35 @@ def classify_addressee(spanish: str, english: str) -> str | None:
         if re.search(r"[áéí]s$", word) and len(word) > 3 and word not in NOT_VOS:
             return VOS
     return None
+
+
+YOU_WORDS = {"you", "your", "yours", "yourself", "yourselves"}
+
+
+def command_verb(english: str) -> str:
+    """The English verb a command starts with: "Don't open the window." -> 'open'."""
+    words = tokens(english)
+    if words[:2] == ["don", "t"]:
+        words = words[2:]
+    return words[0] if words else ""
+
+
+def formal_or_plural(spanish: str, english: str, english_verbs: set[str], infinitives: set[str]) -> str | None:
+    """Ud. / Uds. when a sentence is certainly addressed to one, otherwise None (a vos sentence, or unsure).
+
+    Certain means an explicit Ud. / Uds. in a "you" sentence or a command, or a command whose ending says Ud. /
+    Uds. and that is plainly a command: "No ..." for "Don't ...", or English that starts with a verb the book
+    teaches (so "Paula es doctora." is not read as one).
+    """
+    command = classify_command(spanish, english, infinitives, max_words=12)
+    pronoun = explicit_pronoun(tokens(spanish))
+    if pronoun and (command or YOU_WORDS & set(tokens(english))):
+        return pronoun
+    if command not in (UD, UDS):
+        return None
+    negative = tokens(spanish)[:1] == ["no"] and tokens(english)[:2] == ["don", "t"]
+    verb = command_verb(english)
+    return command if negative or (verb in english_verbs and verb != "let") else None
 
 
 # Imperfect endings are only trusted on a word that differs between the cards, never on "María" or "día".
@@ -188,15 +244,15 @@ def distinguishing(word_lists: list[list[str]]) -> list[list[str]]:
     return result
 
 
-def by_command(cards: list[dict]) -> list[str] | None:
-    return [classify_command(card["spanish"], card["english"]) for card in cards]
+def by_command(cards: list[dict], infinitives: set[str] = frozenset()) -> list[str] | None:
+    return [classify_command(card["spanish"], card["english"], infinitives) for card in cards]
 
 
-def by_addressee(cards: list[dict]) -> list[str] | None:
+def by_addressee(cards: list[dict], infinitives: set[str] = frozenset()) -> list[str] | None:
     return [classify_addressee(card["spanish"], card["english"]) for card in cards]
 
 
-def by_gender(cards: list[dict]) -> list[str] | None:
+def by_gender(cards: list[dict], infinitives: set[str] = frozenset()) -> list[str] | None:
     differing = distinguishing([tokens(card["spanish"]) for card in cards])
     if any(len(words) != 1 for words in differing):
         return None
@@ -209,14 +265,14 @@ def by_gender(cards: list[dict]) -> list[str] | None:
     return [MASCULINE if match.group(1).endswith(("o", "os")) else FEMININE for match in ends]
 
 
-def by_tense(cards: list[dict]) -> list[str] | None:
+def by_tense(cards: list[dict], infinitives: set[str] = frozenset()) -> list[str] | None:
     differing = distinguishing([tokens(card["spanish"]) for card in cards])
     if any(len(words) != 1 for words in differing):
         return None
     return [tense_of(words[0]) for words in differing]
 
 
-def by_clitic_position(cards: list[dict]) -> list[str] | None:
+def by_clitic_position(cards: list[dict], infinitives: set[str] = frozenset()) -> list[str] | None:
     letters = {
         "".join(sorted("".join(w for w in fold(card["spanish"]).split() if w not in SUBJECTS)))
         for card in cards
@@ -236,6 +292,7 @@ def spanish_hints(cards: list[dict]) -> list[list[str]]:
     return [differing, openings, whole]
 
 
+ADDRESSEE_STRATEGIES = {"command", "addressee"}  # their tags become labels, not parentheticals
 STRATEGIES = [
     ("command", by_command),
     ("addressee", by_addressee),
@@ -249,9 +306,9 @@ def usable(tags: list[str] | None) -> bool:
     return bool(tags) and all(tags) and len(set(tags)) == len(tags)
 
 
-def tags_for(cards: list[dict]) -> tuple[str, list[str]]:
+def tags_for(cards: list[dict], infinitives: set[str] = frozenset()) -> tuple[str, list[str]]:
     for name, strategy in STRATEGIES:
-        tags = strategy(cards)
+        tags = strategy(cards, infinitives)
         if usable(tags):
             return name, tags
     for hints in spanish_hints(cards):
@@ -345,19 +402,44 @@ def collision_groups(words: list[dict]) -> list[list[dict]]:
     return [group for group in grouped.values() if len({spanish_key(card["spanish"]) for card in group}) > 1]
 
 
-def disambiguate_sentences(words: list[dict], report: Counter) -> list[dict]:
-    """One chapter's cards in, the same cards out with their ambiguous sentence prompts tagged."""
+def label_formal_and_plural(
+    words: list[dict], report: Counter, english_verbs: set[str], infinitives: set[str]
+) -> list[dict]:
+    """Every sentence certainly addressed to Ud. or Uds. starts with its label; vos sentences stay plain."""
+    result = []
+    for card in words:
+        if is_sentence(card) and not has_addressee_label(card["english"]):
+            addressee = formal_or_plural(card["spanish"], card["english"], english_verbs, infinitives)
+            if addressee:
+                card = {**card, "english": label_addressee(card["english"], addressee)}
+                report["disambiguation.addressee_labels"] += 1
+        result.append(card)
+    return result
+
+
+def disambiguate_sentences(
+    words: list[dict],
+    report: Counter,
+    english_verbs: set[str] = frozenset(),
+    infinitives: set[str] = frozenset(),
+) -> list[dict]:
+    """One chapter's cards in, the same cards out with formal / plural prompts labelled and ambiguous sentence
+    prompts tagged. `english_verbs` and `infinitives` are the verbs the book teaches, in each language."""
     words = drop_pronoun_duplicates(merge_spanish_collisions(words, report), report)
+    words = label_formal_and_plural(words, report, english_verbs, infinitives)
     replacements: dict[int, str] = {}
     for cards in collision_groups(words):
         report["disambiguation.groups"] += 1
-        strategy, tags = tags_for(cards)
+        strategy, tags = tags_for(cards, infinitives)
         report[f"disambiguation.strategy.{strategy}"] += 1
         for card, tag in zip(cards, tags):
-            replacements[id(card)] = insert_tag(card["english"], tag)
+            if strategy in ADDRESSEE_STRATEGIES:
+                replacements[id(card)] = label_addressee(card["english"], tag)
+            else:
+                replacements[id(card)] = insert_tag(card["english"], tag)
     result = []
     for card in words:
-        if id(card) in replacements:
+        if replacements.get(id(card), card["english"]) != card["english"]:
             card = {**card, "english": replacements[id(card)]}
             report["disambiguation.cards_tagged"] += 1
         result.append(card)

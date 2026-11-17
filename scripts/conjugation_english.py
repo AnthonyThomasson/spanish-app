@@ -2,10 +2,13 @@
 
 The book's conjugation tables are Spanish-only, so the English side is built here, deterministically:
 'to have lunch' + ella -> 'she has lunch'. The subjects are chosen so that every card in a verb's
-set has its own English prompt (the app treats a parenthetical as optional when answering):
+set has its own English prompt (the app treats a parenthetical, and a leading "Formal:", as optional when answering):
 
-    yo I · vos you · él he · ella she · Ud. you (formal) · nosotros we
+    yo I · vos you · él he · ella she · Ud. Formal: you · nosotros we
     ellos they (m.) · ellas they (f.) · Uds. you all
+
+The deck is Argentine, so a plain "you" is vos. An Ud. card says so up front ("Formal: you are"), where a voice
+reads it naturally, instead of a "(formal)" note in the middle of the phrase.
 """
 
 import re
@@ -15,12 +18,14 @@ ENGLISH_SUBJECTS = {
     "vos": "you",
     "él": "he",
     "ella": "she",
-    "Ud.": "you (formal)",
+    "Ud.": "you",
     "nosotros": "we",
     "ellos": "they (m.)",
     "ellas": "they (f.)",
     "Uds.": "you all",
 }
+# Said before the whole prompt, alternatives included: "Formal: you are able / you can".
+LABELS = {"Ud.": "Formal: "}
 THIRD_PERSON_SINGULAR = {"él", "ella"}
 MODALS = {"can", "could", "may", "might", "must", "shall", "should", "will", "would"}
 # Words that cannot start a verb phrase: a gloss that begins with one is not an infinitive.
@@ -112,9 +117,10 @@ ENGLISH_SENSES = {
 
 def english_prompt(infinitive: str, gloss: str, pronoun: str) -> str | None:
     """The English for a conjugation card: the curated senses for the verb if it has them, otherwise the
-    first sense of the book's gloss. Several senses are joined with ' / ' ('I am able / I can')."""
+    first sense of the book's gloss. Several senses are joined with ' / ' ('I am able / I can'). An Ud. prompt
+    starts with 'Formal: '."""
     senses = ENGLISH_SENSES.get(infinitive, [gloss])
     forms = [conjugate_english(sense, pronoun) for sense in senses]
     if None in forms:
         return None
-    return " / ".join(forms)
+    return LABELS.get(pronoun, "") + " / ".join(forms)

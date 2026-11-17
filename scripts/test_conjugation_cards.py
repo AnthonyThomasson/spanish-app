@@ -456,7 +456,7 @@ class PipelineTests(unittest.TestCase):
             {word["spanish"]: word["english"] for word in conjugations},
             {
                 "yo folmo": "I blorp", "vos folmás": "you blorp", "él folma": "he blorps", "ella folma": "she blorps",
-                "Ud. folma": "you (formal) blorp", "nosotros folmamos": "we blorp",
+                "Ud. folma": "Formal: you blorp", "nosotros folmamos": "we blorp",
                 "ellos folman": "they (m.) blorp", "ellas folman": "they (f.) blorp", "Uds. folman": "you all blorp",
             },
         )

@@ -39,7 +39,7 @@ class ConjugateEnglishTests(unittest.TestCase):
             "vos": "you blorp",
             "él": "he blorps",
             "ella": "she blorps",
-            "Ud.": "you (formal) blorp",
+            "Ud.": "you blorp",
             "nosotros": "we blorp",
             "ellos": "they (m.) blorp",
             "ellas": "they (f.) blorp",
@@ -64,7 +64,7 @@ class ConjugateEnglishTests(unittest.TestCase):
         self.assertEqual(conjugate_english("to be", "yo"), "I am")
         self.assertEqual(conjugate_english("to be", "vos"), "you are")
         self.assertEqual(conjugate_english("to be", "ella"), "she is")
-        self.assertEqual(conjugate_english("to be", "Ud."), "you (formal) are")
+        self.assertEqual(conjugate_english("to be", "Ud."), "you are")
         self.assertEqual(conjugate_english("to be", "ellas"), "they (f.) are")
         self.assertEqual(conjugate_english("to be", "Uds."), "you all are")
 
@@ -84,7 +84,7 @@ class ConjugateEnglishTests(unittest.TestCase):
         self.assertEqual(conjugate_english("to have zimble", "él"), "he has zimble")
         self.assertEqual(conjugate_english("to have zimble", "ellos"), "they (m.) have zimble")
         self.assertEqual(conjugate_english("to blorp up", "ella"), "she blorps up")
-        self.assertEqual(conjugate_english("to listen to", "Ud."), "you (formal) listen to")
+        self.assertEqual(english_prompt("folmar", "to listen to", "Ud."), "Formal: you listen to")
         self.assertEqual(conjugate_english("to go down, to descend", "ella"), "she goes down")
 
     def test_reflexive_glosses_are_plain_verbs(self):
@@ -127,7 +127,7 @@ class EnglishPromptTests(unittest.TestCase):
     def test_poder_offers_be_able_and_can_and_can_is_a_modal(self):
         self.assertEqual(english_prompt("poder", "to be able", "yo"), "I am able / I can")
         self.assertEqual(english_prompt("poder", "to be able", "él"), "he is able / he can")
-        self.assertEqual(english_prompt("poder", "to be able", "Ud."), "you (formal) are able / you (formal) can")
+        self.assertEqual(english_prompt("poder", "to be able", "Ud."), "Formal: you are able / you can")
         self.assertEqual(english_prompt("poder", "to be able", "ellos"), "they (m.) are able / they (m.) can")
         for pronoun in ENGLISH_SUBJECTS:
             text = english_prompt("poder", "to be able", pronoun)

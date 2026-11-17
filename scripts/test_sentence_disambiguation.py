@@ -8,9 +8,15 @@ from sentence_disambiguation import (
     FIXED_TAGS,
     collision_groups,
     disambiguate_sentences,
+    formal_or_plural,
     insert_tag,
+    label_addressee,
     tense_of,
 )
+
+# The verbs "the book" teaches in these tests, in each language.
+ENGLISH_VERBS = {"sing", "open", "drink", "eat", "write", "give", "put", "lend", "tell", "let"}
+INFINITIVES = {"cantar", "abrir", "beber", "comer", "escribir", "dar", "poner", "prestar", "decir"}
 
 
 def sentence(spanish, english):
@@ -21,17 +27,59 @@ def word(spanish, english):
     return {"spanish": spanish, "english": english, "sourcePage": 1}
 
 
-def run(*pairs):
+def run(*pairs, english_verbs=frozenset(), infinitives=frozenset()):
     report = Counter()
-    cards = disambiguate_sentences([sentence(*pair) for pair in pairs], report)
+    cards = disambiguate_sentences([sentence(*pair) for pair in pairs], report, english_verbs, infinitives)
     return [(card["spanish"], card["english"]) for card in cards], report
 
 
 class InsertTagTests(unittest.TestCase):
     def test_tag_goes_before_the_closing_punctuation(self):
-        self.assertEqual(insert_tag("Drink.", "vos"), "Drink (vos).")
-        self.assertEqual(insert_tag("Where are you from?", "Ud."), "Where are you from (Ud.)?")
-        self.assertEqual(insert_tag("Come here", "vos"), "Come here (vos)")
+        self.assertEqual(insert_tag("I see them.", "m."), "I see them (m.).")
+        self.assertEqual(insert_tag("Did you go?", "preterit"), "Did you go (preterit)?")
+        self.assertEqual(insert_tag("I see them", "f."), "I see them (f.)")
+
+
+class AddresseeLabelTests(unittest.TestCase):
+    def test_formal_and_plural_are_said_up_front_and_vos_is_plain(self):
+        self.assertEqual(label_addressee("Where are you from?", "Ud."), "Formal: Where are you from?")
+        self.assertEqual(label_addressee("Don't yell.", "Uds."), "Plural: Don't yell.")
+        self.assertEqual(label_addressee("Look.", "vos"), "Look.")
+        self.assertEqual(label_addressee("Sing. / Have a sing.", "Ud."), "Formal: Sing. / Have a sing.")
+
+    def test_a_label_is_not_added_twice(self):
+        self.assertEqual(label_addressee("Formal: Sing.", "Ud."), "Formal: Sing.")
+
+    def test_an_explicit_pronoun_in_a_you_sentence_is_certain(self):
+        self.assertEqual(formal_or_plural("¿De dónde es Ud.?", "Where are you from?", set(), set()), "Ud.")
+        self.assertEqual(formal_or_plural("Las ideas de Uds.", "Your ideas.", set(), set()), "Uds.")
+        self.assertIsNone(formal_or_plural("¿De dónde sos?", "Where are you from?", set(), set()))
+
+    def test_a_command_counts_only_when_its_english_starts_with_a_known_verb(self):
+        self.assertEqual(formal_or_plural("Abra la ventana.", "Open the window.", ENGLISH_VERBS, INFINITIVES), "Ud.")
+        self.assertEqual(formal_or_plural("No canten.", "Don't sing.", ENGLISH_VERBS, INFINITIVES), "Uds.")
+        self.assertIsNone(formal_or_plural("Paula es doctora.", "Paula is a doctor.", ENGLISH_VERBS, INFINITIVES))
+        self.assertIsNone(formal_or_plural("Démosela.", "Let's give it to her.", ENGLISH_VERBS, INFINITIVES))
+
+    def test_a_negative_command_is_plain_from_no_and_dont(self):
+        self.assertEqual(formal_or_plural("No se rían.", "Don't laugh.", ENGLISH_VERBS, INFINITIVES), "Uds.")
+        self.assertEqual(formal_or_plural("No se desespere.", "Don't despair.", ENGLISH_VERBS, INFINITIVES), "Ud.")
+        self.assertIsNone(formal_or_plural("No se rían.", "They don't laugh.", ENGLISH_VERBS, INFINITIVES))
+
+    def test_a_longer_command_is_still_recognised(self):
+        self.assertEqual(
+            formal_or_plural("Abra la ventana de la casa a las siete.", "Open the window of the house at seven.",
+                             ENGLISH_VERBS, INFINITIVES),
+            "Ud.",
+        )
+
+    def test_a_vos_command_with_attached_pronouns_is_not_formal(self):
+        for spanish, english in [
+            ("Escribime la carta.", "Write the letter to me."), ("Dame la sartén.", "Give me the frying pan."),
+            ("Ponete el abrigo.", "Put on your coat."), ("Dámela.", "Give it to me."),
+            ("Prestale el dinero.", "Lend him the money."), ("Decínosla.", "Tell it to us."),
+        ]:
+            self.assertIsNone(formal_or_plural(spanish, english, ENGLISH_VERBS, INFINITIVES), spanish)
 
 
 class CommandTests(unittest.TestCase):
@@ -43,6 +91,11 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(classify_command("No cante.", "Don't sing."), "Ud.")
         self.assertEqual(classify_command("No se vayan.", "Don't go."), "Uds.")
         self.assertEqual(classify_command("No te vayas.", "Don't go."), "vos")
+
+    def test_an_unaccented_vos_command_with_pronouns_is_recognised_from_the_infinitive(self):
+        self.assertEqual(classify_command("Dame el libro.", "Give me the book.", INFINITIVES), "vos")
+        self.assertEqual(classify_command("Escribime.", "Write to me.", INFINITIVES), "vos")
+        self.assertEqual(classify_command("Escríbame.", "Write to me.", INFINITIVES), "Ud.")
 
     def test_an_explicit_pronoun_wins(self):
         self.assertEqual(classify_command("Canten Uds.", "Sing."), "Uds.")
@@ -87,14 +140,24 @@ class SpokenTextInStepTests(unittest.TestCase):
 
 
 class DisambiguationTests(unittest.TestCase):
-    def test_commands_get_vos_ud_uds(self):
+    def test_colliding_commands_are_labelled_formal_and_plural_and_vos_stays_plain(self):
         cards, report = run(("Cantá.", "Sing."), ("Cante.", "Sing."), ("Canten.", "Sing."))
-        self.assertEqual([english for _, english in cards], ["Sing (vos).", "Sing (Ud.).", "Sing (Uds.)."])
+        self.assertEqual([english for _, english in cards], ["Sing.", "Formal: Sing.", "Plural: Sing."])
         self.assertEqual(report["disambiguation.strategy.command"], 1)
+
+    def test_a_formal_command_is_labelled_even_without_a_collision(self):
+        cards, report = run(("Beba agua.", "Drink water."), english_verbs=ENGLISH_VERBS, infinitives=INFINITIVES)
+        self.assertEqual(cards, [("Beba agua.", "Formal: Drink water.")])
+        self.assertEqual(report["disambiguation.addressee_labels"], 1)
+        self.assertEqual(report["disambiguation.groups"], 0)
 
     def test_a_you_sentence_is_told_apart_by_its_pronoun(self):
         cards, _ = run(("¿Dónde vive Ud.?", "Where do you live?"), ("¿Dónde viven Uds.?", "Where do you live?"))
-        self.assertEqual([english for _, english in cards], ["Where do you live (Ud.)?", "Where do you live (Uds.)?"])
+        self.assertEqual([english for _, english in cards], ["Formal: Where do you live?", "Plural: Where do you live?"])
+
+    def test_a_lone_ud_sentence_is_labelled_and_a_vos_one_is_not(self):
+        cards, _ = run(("¿Cómo está Ud.?", "How are you?"), ("¿Qué querés?", "What do you want?"))
+        self.assertEqual([english for _, english in cards], ["Formal: How are you?", "What do you want?"])
 
     def test_clitic_gender(self):
         cards, _ = run(("Quiero verlos.", "I want to see them."), ("Quiero verlas.", "I want to see them."))
@@ -160,14 +223,22 @@ class DisambiguationTests(unittest.TestCase):
 
     def test_a_repeated_pronoun_command_is_dropped_as_a_duplicate(self):
         cards, report = run(("Canten Uds.", "Sing."), ("Canten.", "Sing."), ("Cantá.", "Sing."))
-        self.assertEqual(cards, [("Canten.", "Sing (Uds.)."), ("Cantá.", "Sing (vos).")])
+        self.assertEqual(cards, [("Canten.", "Plural: Sing."), ("Cantá.", "Sing.")])
         self.assertEqual(report["disambiguation.duplicates_dropped"], 1)
+
+    def test_a_merged_card_is_labelled_once_for_all_its_alternatives(self):
+        cards, _ = run(
+            ("Cante.", "Sing."), ("Cante.", "Have a sing."), ("Cantá.", "Sing."),
+        )
+        self.assertEqual(cards[0][1], "Formal: Sing. / Have a sing.")
+        self.assertEqual(cards[1][1], "Sing.")
 
     def test_a_merged_card_is_tagged_in_every_alternative(self):
         cards, _ = run(
-            ("Cantá.", "Sing."), ("Cantá.", "Have a sing."), ("Cante.", "Sing."),
+            ("Quiero verlos.", "I want to see them."), ("Quiero verlos.", "I want to watch them."),
+            ("Quiero verlas.", "I want to see them."),
         )
-        self.assertEqual(cards[0][1], "Sing (vos). / Have a sing (vos).")
+        self.assertEqual(cards[0][1], "I want to see them (m.). / I want to watch them (m.).")
 
     def test_ustedes_spelled_out_is_a_duplicate_too(self):
         cards, _ = run(("Canten ustedes.", "Sing."), ("Canten.", "Sing."), ("Cantá.", "Sing."))
